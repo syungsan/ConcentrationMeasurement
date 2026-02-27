@@ -1,0 +1,11 @@
+# python 3.12
+ultralytics
+opencv-python==4.10.0.84
+numpy
+PySide6
+PyYAML
+pandas
+
+# PyTorch
+# CUDA 12.8.1
+# pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128

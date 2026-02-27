@@ -1,0 +1,34 @@
+paths:
+  # focus_dataset/ を基準にした相対パス（"../" は使わない）
+  raw_video: "videos/raw.mp4"
+  proxy_video: "videos/proxy.mp4"
+  db_path: "db/dataset.sqlite"
+  crop_dir: "assets/crops"
+  pose_dir: "assets/poses"
+
+proxy:
+  width: 1920
+  fps: 24
+  crf: 20
+
+detection_tracking:
+  model: "models/yolov8x.pt"
+  tracker: "botsort.yaml"     # bytetrack.yaml でもOK（Ultralytics同梱の想定）
+  imgsz: 1280                 # 精度優先なら 1536 / 1920（重くなる）
+  conf: 0.35
+  iou: 0.5
+  classes: [0]                # person
+
+segments:
+  window_sec: 5.0
+  step_sec: 5.0
+  min_presence_ratio: 0.6     # 窓内の何割で検出されていればsegment採用するか
+
+sampling:
+  sample_fps: 2.0             # 時系列サンプル（2～5推奨）
+  crop_long_side: 384         # 保存クロップ長辺（256～512推奨）
+
+pose:
+  model: "models/yolov8x-pose.pt"
+  conf: 0.25
+  imgsz: 384                  # crop推論サイズ
