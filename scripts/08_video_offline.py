@@ -665,6 +665,6 @@ if __name__ == "__main__":
 
 # examples:
 # 目モザイク付き
-# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/minamoto.mp4 --draw_skeleton --mosaic_eyes --mosaic_scale 0.06 --mosaic_pad 1.8
+# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --mosaic_scale 0.06 --mosaic_pad 1.8
 
-# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/minamoto.mp4 --draw_skeleton --skel_line 2 --skel_radius 3 --skel_conf 0.25
+# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --skel_line 2 --skel_radius 3 --skel_conf 0.25

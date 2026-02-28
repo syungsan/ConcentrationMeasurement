@@ -19,8 +19,8 @@ from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms
 
-from scripts.lib.pose_norm import normalize_pose_kpts
-from scripts.lib.model_defs import Cfg, Regressor, Agg  # ★分離import
+from lib.pose_norm import normalize_pose_kpts
+from lib.model_defs import Cfg, Regressor, Agg  # ★分離import
 
 
 # -------------------------

@@ -7,9 +7,9 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from scripts.lib.db import connect, init_db
-from scripts.lib.video import read_frame_at
-from scripts.lib.runroot import get_data_root, rpath  # 既に追加済みの想定
+from lib.db import connect, init_db
+from lib.video import read_frame_at
+from lib.runroot import get_data_root, rpath  # 既に追加済みの想定
 
 here = Path(__file__).resolve()
 repo_root = here.parent.parent  # config.yaml がある場所（固定）

@@ -13,11 +13,11 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
-from scripts.lib.db import connect, init_db, upsert_video, ensure_track
-from scripts.lib.runroot import get_data_root, rpath
-from scripts.lib.pose_norm import normalize_pose_kpts
-from scripts.lib.seq_buffer import MultiTrackBuffer
-from scripts.lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
+from lib.db import connect, init_db, upsert_video, ensure_track
+from lib.runroot import get_data_root, rpath
+from lib.pose_norm import normalize_pose_kpts
+from lib.seq_buffer import MultiTrackBuffer
+from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
 
 Mode = Literal["image", "skeleton", "fusion"]
 
