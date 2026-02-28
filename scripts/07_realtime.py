@@ -13,11 +13,11 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
-from scripts.lib.db import connect, init_db, upsert_video, ensure_track
-from scripts.lib.runroot import get_data_root, rpath
-from scripts.lib.pose_norm import normalize_pose_kpts
-from scripts.lib.seq_buffer import MultiTrackBuffer
-from scripts.lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
+from lib.db import connect, init_db, upsert_video, ensure_track
+from lib.runroot import get_data_root, rpath
+from lib.pose_norm import normalize_pose_kpts
+from lib.seq_buffer import MultiTrackBuffer
+from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
 
 Mode = Literal["image", "skeleton", "fusion"]
 
@@ -169,10 +169,7 @@ def mosaic_eyes_from_kpts(
         pad: float = 1.8,
         mosaic_scale: float = 0.06,
 ):
-    """
-    COCO17: left_eye=1, right_eye=2, nose=0
-    目周辺を推定してモザイクする（face bbox不要）
-    """
+    # COCO17: left_eye=1, right_eye=2, nose=0
     if kpts_frame is None or kpts_frame.ndim != 2 or kpts_frame.shape[0] < 5:
         return
 
@@ -216,6 +213,40 @@ def mosaic_eyes_from_kpts(
 
 
 # -------------------------
+# Window helpers (NEW)
+# -------------------------
+def setup_window(win_name: str, win_w: int, win_h: int, fullscreen: bool):
+    """
+    OpenCV window setup:
+      - NORMAL: allow resizing + set initial size
+      - FULLSCREEN: full display
+    """
+    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    if win_w > 0 and win_h > 0:
+        try:
+            cv2.resizeWindow(win_name, int(win_w), int(win_h))
+        except Exception:
+            pass
+
+    if fullscreen:
+        try:
+            cv2.setWindowProperty(win_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        except Exception:
+            pass
+
+
+def set_fullscreen(win_name: str, enable: bool):
+    try:
+        cv2.setWindowProperty(
+            win_name,
+            cv2.WND_PROP_FULLSCREEN,
+            cv2.WINDOW_FULLSCREEN if enable else cv2.WINDOW_NORMAL,
+        )
+    except Exception:
+        pass
+
+
+# -------------------------
 # States (for stable drawing)
 # -------------------------
 @dataclass
@@ -240,6 +271,12 @@ def parse_args():
 
     ap.add_argument("--show", action="store_true", help="ウィンドウ表示")
     ap.add_argument("--save_assets", action="store_true", help="crop/pose を保存してDBに記録")
+
+    # NEW: window controls
+    ap.add_argument("--win_name", type=str, default="focus realtime", help="表示ウィンドウ名")
+    ap.add_argument("--win_w", type=int, default=0, help="ウィンドウ幅（0なら未指定）")
+    ap.add_argument("--win_h", type=int, default=0, help="ウィンドウ高さ（0なら未指定）")
+    ap.add_argument("--fullscreen", action="store_true", help="起動時に全画面（fキーでトグル可）")
 
     # lightweight controls
     ap.add_argument("--ttl", type=float, default=3.0, help="表示/状態保持TTL秒（点滅抑制）")
@@ -307,23 +344,19 @@ def main():
     det_imgsz = int(args.det_imgsz) if args.det_imgsz > 0 else int(detcfg["imgsz"])
     pose_imgsz = int(args.pose_imgsz) if args.pose_imgsz > 0 else int(posecfg["imgsz"])
 
-    # models
     det_model = YOLO(str((repo_root / detcfg["model"]).resolve()))
 
-    need_pose = (args.mode in ("skeleton", "fusion"))  # for model input
+    need_pose = (args.mode in ("skeleton", "fusion"))
     draw_pose = bool(args.draw_skeleton) and (args.mode in ("skeleton", "fusion"))
     need_mosaic = bool(args.mosaic_eyes) and (args.mode in ("skeleton", "fusion"))
     pose_model = YOLO(str((repo_root / posecfg["model"]).resolve())) if (need_pose or draw_pose or need_mosaic) else None
 
-    # regressor
     _ckpt, train_cfg, reg = load_ckpt(Path(args.ckpt).resolve(), mode=args.mode, device=args.device)
     img_tf = build_image_tf(int(train_cfg.img_size))
 
-    # db
     conn = connect(db_path)
     init_db(conn)
 
-    # video source
     src = args.source
     cap = cv2.VideoCapture(0 if src.strip() == "0" else src)
     if not cap.isOpened():
@@ -346,8 +379,15 @@ def main():
     tracker_path = (repo_root / tracker_cfg).resolve()
     tracker_str = str(tracker_path) if tracker_path.exists() else str(tracker_cfg)
 
+    # NEW: setup window
+    fullscreen_state = bool(args.fullscreen)
+    if args.show:
+        setup_window(args.win_name, int(args.win_w), int(args.win_h), fullscreen_state)
+
     print(f"[realtime] mode={args.mode} T={T} sample_fps={sample_fps} det_imgsz={det_imgsz} pose_imgsz={pose_imgsz} crop_long={crop_long}")
     print(f"[realtime] draw_skeleton={bool(args.draw_skeleton)} mosaic_eyes={bool(args.mosaic_eyes)} save_assets={bool(args.save_assets)} ttl={args.ttl}s")
+    if args.show:
+        print(f"[realtime] window='{args.win_name}' size=({args.win_w},{args.win_h}) fullscreen={fullscreen_state} (toggle: f)")
 
     try:
         while True:
@@ -357,7 +397,6 @@ def main():
 
             t = frame_idx / float(fps)
 
-            # --- sampling ---
             do_sample = (t - last_sample_t) >= (1.0 / sample_fps - 1e-6)
             if do_sample:
                 last_sample_t = t
@@ -395,20 +434,15 @@ def main():
                         if crop0.size == 0:
                             continue
 
-                        # keep original crop0 size for mapping
                         crop_h0, crop_w0 = crop0.shape[:2]
-
-                        # downscale crop for speed
                         crop = resize_long_side(crop0, crop_long)
 
-                        # image tensor
                         frame_tensor = None
                         if args.mode in ("image", "fusion"):
                             from PIL import Image
                             im = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
                             frame_tensor = img_tf(im)
 
-                        # pose tensor + kpts for draw/mosaic
                         pose_tensor = None
                         pose_json = {}
                         kpts_frame_for_draw = None
@@ -423,23 +457,16 @@ def main():
 
                             K = int(train_cfg.K)
                             if pr.keypoints is not None and len(pr.keypoints.data) > 0:
-                                kpts = pr.keypoints.data[0].cpu().numpy().astype(np.float32)  # on resized-crop coords
+                                kpts = pr.keypoints.data[0].cpu().numpy().astype(np.float32)
                             else:
                                 kpts = np.zeros((K, 3), dtype=np.float32)
 
-                            # normalize for model input
                             kpts_norm = normalize_pose_kpts(kpts, conf_thr=float(args.skel_conf))
                             pose_tensor = torch.from_numpy(kpts_norm)
 
                             if args.save_assets:
-                                pose_json = {
-                                    "keypoints": kpts_norm.tolist(),
-                                    "format": "x,y,conf",
-                                    "space": "crop",
-                                    "normalized": "mean+RMS",
-                                }
+                                pose_json = {"keypoints": kpts_norm.tolist(), "format": "x,y,conf", "space": "crop", "normalized": "mean+RMS"}
 
-                            # map resized-crop coords -> crop0 coords -> frame coords
                             if draw_pose or need_mosaic:
                                 ch, cw = crop.shape[:2]
                                 kpts_on_crop0 = kpts.copy()
@@ -452,14 +479,12 @@ def main():
                                 kpts_frame_for_draw[:, 0] += float(x1i)
                                 kpts_frame_for_draw[:, 1] += float(y1i)
 
-                        # push buffer
                         buf = buffers.get(int(tid))
                         buf.push(frame_tensor=frame_tensor, pose_tensor=pose_tensor, t=t)
 
                         if buf.ready():
                             frames_b, poses_b = buf.get_batch()
                             yhat = predict_score(reg, frames_b, poses_b, args.device)
-                            _score_int = clamp_1to10(yhat)
 
                             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
                             if tid in latest:
@@ -479,7 +504,6 @@ def main():
                                     kpts_frame=kpts_frame_for_draw,
                                 )
 
-                            # save assets + DB insert (optional)
                             crop_rel = None
                             pose_rel = None
                             if args.save_assets:
@@ -513,32 +537,22 @@ def main():
 
                 buffers.gc(t)
 
-                # TTL GC
                 for tid in list(latest.keys()):
                     if (t - latest[tid].last_seen_t) > float(args.ttl):
                         del latest[tid]
 
-            # --- draw (every frame) ---
+            # --- draw ---
             scores = [st.score for st in latest.values() if not math.isnan(float(st.score))]
             if scores:
                 avg_now = float(np.mean(scores))
                 class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
                 avg_i = clamp_1to10(class_avg_ema)
-                draw_label(
-                    frame, 20, 55,
-                    f"Class Avg: {avg_i}   (n={len(scores)})",
-                    font_scale=float(args.class_scale),
-                    thickness=int(args.class_thick),
-                )
+                draw_label(frame, 20, 55, f"Class Avg: {avg_i}   (n={len(scores)})",
+                           font_scale=float(args.class_scale), thickness=int(args.class_thick))
             else:
-                draw_label(
-                    frame, 20, 55,
-                    "Class Avg: -   (n=0)",
-                    font_scale=float(args.class_scale),
-                    thickness=int(args.class_thick),
-                )
+                draw_label(frame, 20, 55, "Class Avg: -   (n=0)",
+                           font_scale=float(args.class_scale), thickness=int(args.class_thick))
 
-            # draw top N
             items = list(latest.items())
             items.sort(key=lambda kv: kv[1].det_conf, reverse=True)
             items = items[: int(args.max_tracks_draw)]
@@ -552,18 +566,12 @@ def main():
 
                 cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
                 score_i = clamp_1to10(float(st.score))
-                draw_label(
-                    frame, x1i, y1i,
-                    f"ID:{int(tid)}  score:{score_i}",
-                    font_scale=float(args.label_scale),
-                    thickness=int(args.label_thick),
-                )
+                draw_label(frame, x1i, y1i, f"ID:{int(tid)}  score:{score_i}",
+                           font_scale=float(args.label_scale), thickness=int(args.label_thick))
 
-                # mosaic first (so skeleton stays visible if enabled)
                 if args.mosaic_eyes and (args.mode in ("skeleton", "fusion")) and st.kpts_frame is not None:
                     mosaic_eyes_from_kpts(
-                        frame,
-                        st.kpts_frame,
+                        frame, st.kpts_frame,
                         conf_thr=float(args.mosaic_conf),
                         pad=float(args.mosaic_pad),
                         mosaic_scale=float(args.mosaic_scale),
@@ -571,16 +579,21 @@ def main():
 
                 if args.draw_skeleton and st.kpts_frame is not None:
                     draw_skeleton(
-                        frame,
-                        st.kpts_frame,
+                        frame, st.kpts_frame,
                         conf_thr=float(args.skel_conf),
                         radius=int(args.skel_radius),
                         line_thick=int(args.skel_line),
                     )
 
             if args.show:
-                cv2.imshow("focus realtime", frame)
+                cv2.imshow(args.win_name, frame)
                 k = cv2.waitKey(1) & 0xFF
+
+                # NEW: fullscreen toggle with 'f'
+                if k == ord("f"):
+                    fullscreen_state = not fullscreen_state
+                    set_fullscreen(args.win_name, fullscreen_state)
+
                 if k == 27 or k == ord("q"):
                     break
 
@@ -599,10 +612,8 @@ if __name__ == "__main__":
     main()
 
 # examples:
-# skeleton + mosaic
-# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show \
-#   --sample_fps 2 --det_imgsz 960 --pose_imgsz 320 --crop_long 320 --mosaic_eyes --mosaic_scale 0.06
+# window size
+# python scripts/07_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --win_w 1280 --win_h 720
 #
-# fusion + skeleton + mosaic (heavier)
-# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode fusion --source 0 --show \
-#   --sample_fps 2 --det_imgsz 960 --pose_imgsz 320 --crop_long 320 --draw_skeleton --mosaic_eyes
+# fullscreen (toggle with f)
+# python scripts/07_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen

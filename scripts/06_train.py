@@ -19,8 +19,8 @@ from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from torchvision import transforms
 
-from scripts.lib.pose_norm import normalize_pose_kpts
-from scripts.lib.model_defs import Cfg, Regressor, Agg  # ★分離import
+from lib.pose_norm import normalize_pose_kpts
+from lib.model_defs import Cfg, Regressor, Agg  # ★分離import
 
 
 # -------------------------
@@ -552,6 +552,12 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    import winsound
+    try:
+        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+    except Exception as e:
+        print(f"[WARN] 音声を再生できませんでした: {e}")
 
 # command
 # python scripts/06_train.py --data_roots datasets/hara,datasets/minamoto,datasets/miyazaki --raters teacherA,teacherB --agg mean --epochs 20 --batch_size 16 --temporal gru --mode skeleton --save_name models/skeleton_modes.pt

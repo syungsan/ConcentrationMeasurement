@@ -1,9 +1,9 @@
 from pathlib import Path
 import yaml
 
-from scripts.lib.db import connect, init_db
-from scripts.lib.segment import build_segments
-from scripts.lib.runroot import get_data_root, rpath
+from lib.db import connect, init_db
+from lib.segment import build_segments
+from lib.runroot import get_data_root, rpath
 
 here = Path(__file__).resolve()
 repo_root = here.parent.parent  # config.yaml がある場所（固定）

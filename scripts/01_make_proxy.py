@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 import yaml
 
-from scripts.lib.runroot import get_data_root, rpath
+from lib.runroot import get_data_root, rpath
 
 here = Path(__file__).resolve()
 repo_root = here.parent.parent  # config.yaml が置いてある場所（従来どおり）

@@ -3,9 +3,9 @@ import yaml
 
 from ultralytics import YOLO
 
-from scripts.lib.db import connect, init_db, upsert_video, ensure_track
-from scripts.lib.video import get_video_meta
-from scripts.lib.runroot import get_data_root, rpath
+from lib.db import connect, init_db, upsert_video, ensure_track
+from lib.video import get_video_meta
+from lib.runroot import get_data_root, rpath
 
 here = Path(__file__).resolve()
 repo_root = here.parent.parent  # config.yaml がある場所（固定）
