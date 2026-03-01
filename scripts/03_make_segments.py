@@ -62,5 +62,11 @@ def main():
 if __name__ == "__main__":
     main()
 
+    import winsound
+    try:
+        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+    except Exception as e:
+        print(f"[WARN] 音声を再生できませんでした: {e}")
+
 # command
 # python scripts/03_make_segments.py --data_root datasets/lesson_001

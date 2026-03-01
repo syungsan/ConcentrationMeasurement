@@ -41,8 +41,15 @@ def main():
     make_proxy(ffmpeg_bin, raw, proxy, int(p["width"]), int(p["fps"]), int(p["crf"]))
     print("OK proxy:", proxy)
 
+
 if __name__ == "__main__":
     main()
+
+    import winsound
+    try:
+        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+    except Exception as e:
+        print(f"[WARN] 音声を再生できませんでした: {e}")
 
 # command
 # python scripts/01_make_proxy.py --data_root datasets/lesson_001
