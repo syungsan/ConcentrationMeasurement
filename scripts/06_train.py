@@ -560,4 +560,4 @@ if __name__ == "__main__":
         print(f"[WARN] 音声を再生できませんでした: {e}")
 
 # command
-# python scripts/06_train.py --data_roots datasets/hara,datasets/minamoto,datasets/miyazaki --raters teacherA,teacherB --agg mean --epochs 20 --batch_size 16 --temporal gru --mode skeleton --save_name models/skeleton_modes.pt
+# python scripts/06_train.py --data_roots datasets/university/hara,datasets/university/minamoto,datasets/university/miyazaki,datasets/elementary_school/unnan_nishi --raters Tadano --agg mean --epochs 20 --batch_size 16 --temporal transformer --mode skeleton --save_name models/transformer_skeleton_modes.pt

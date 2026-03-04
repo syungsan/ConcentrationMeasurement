@@ -6,7 +6,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Literal, Tuple, List
+from typing import Dict, Optional, Literal, Tuple, List, Any
 
 import cv2
 import numpy as np
@@ -213,14 +213,9 @@ def mosaic_eyes_from_kpts(
 
 
 # -------------------------
-# Window helpers (NEW)
+# Window helpers
 # -------------------------
 def setup_window(win_name: str, win_w: int, win_h: int, fullscreen: bool):
-    """
-    OpenCV window setup:
-      - NORMAL: allow resizing + set initial size
-      - FULLSCREEN: full display
-    """
     cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
     if win_w > 0 and win_h > 0:
         try:
@@ -244,6 +239,202 @@ def set_fullscreen(win_name: str, enable: bool):
         )
     except Exception:
         pass
+
+
+# -------------------------
+# Stable ID remap (reduce ID switches)  [NEW]
+# -------------------------
+def _iou(a, b) -> float:
+    ax1, ay1, ax2, ay2 = [float(v) for v in a]
+    bx1, by1, bx2, by2 = [float(v) for v in b]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = max(1e-6, area_a + area_b - inter)
+    return float(inter / union)
+
+
+def _center(b):
+    x1, y1, x2, y2 = [float(v) for v in b]
+    return np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=np.float32)
+
+
+def _kpt_feat(kpts_frame: Optional[np.ndarray], conf_thr: float = 0.2) -> np.ndarray:
+    if kpts_frame is None or kpts_frame.ndim != 2 or kpts_frame.shape[1] < 2:
+        return np.zeros((0,), dtype=np.float32)
+
+    xy = kpts_frame[:, :2].astype(np.float32)
+
+    if kpts_frame.shape[1] >= 3:
+        c = kpts_frame[:, 2].astype(np.float32)
+        m = c >= conf_thr
+        if int(m.sum()) >= 4:
+            xy = xy[m]
+
+    if xy.shape[0] < 4:
+        return np.zeros((0,), dtype=np.float32)
+
+    mu = xy.mean(axis=0, keepdims=True)
+    z = xy - mu
+    s = float(np.sqrt((z ** 2).sum(axis=1).mean()) + 1e-6)
+    z = z / s
+    return z.reshape(-1)
+
+
+def _cos_dist(a: np.ndarray, b: np.ndarray) -> float:
+    if a.size == 0 or b.size == 0 or a.shape != b.shape:
+        return 1.0
+    na = float(np.linalg.norm(a) + 1e-6)
+    nb = float(np.linalg.norm(b) + 1e-6)
+    return float(1.0 - (a @ b) / (na * nb))
+
+
+def _hsv_hist(frame_bgr: np.ndarray, bbox, bins=16) -> np.ndarray:
+    x1, y1, x2, y2 = [int(round(v)) for v in bbox]
+    h, w = frame_bgr.shape[:2]
+    x1 = max(0, min(w - 1, x1)); x2 = max(0, min(w, x2))
+    y1 = max(0, min(h - 1, y1)); y2 = max(0, min(h, y2))
+    if x2 <= x1 or y2 <= y1:
+        return np.zeros((bins * 3,), dtype=np.float32)
+
+    roi = frame_bgr[y1:y2, x1:x2]
+    if roi.size == 0:
+        return np.zeros((bins * 3,), dtype=np.float32)
+
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    hs = []
+    for ch in range(3):
+        hist = cv2.calcHist([hsv], [ch], None, [bins], [0, 256]).reshape(-1).astype(np.float32)
+        hist /= (hist.sum() + 1e-6)
+        hs.append(hist)
+    return np.concatenate(hs, axis=0)
+
+
+def _l1(a: np.ndarray, b: np.ndarray) -> float:
+    if a.size == 0 or b.size == 0 or a.shape != b.shape:
+        return 1.0
+    return float(np.abs(a - b).mean())
+
+
+@dataclass
+class StableTrack:
+    stable_id: int
+    bbox: np.ndarray
+    last_t: float
+    kfeat: np.ndarray
+    hist: np.ndarray
+
+
+class StableIDMapper:
+    """
+    Greedy assignment for speed.
+    Cost = w_iou*(1-iou) + w_center*center_dist_norm + w_kpt*cos_dist + w_hist*l1
+    """
+    def __init__(
+            self,
+            *,
+            max_age_sec: float = 3.5,
+            iou_min: float = 0.05,
+            w_iou: float = 2.5,
+            w_center: float = 1.0,
+            w_kpt: float = 1.6,
+            w_hist: float = 0.7,
+            kpt_conf: float = 0.2,
+            center_norm: float = 500.0,
+            hist_bins: int = 16,
+    ):
+        self.max_age_sec = float(max_age_sec)
+        self.iou_min = float(iou_min)
+        self.w_iou = float(w_iou)
+        self.w_center = float(w_center)
+        self.w_kpt = float(w_kpt)
+        self.w_hist = float(w_hist)
+        self.kpt_conf = float(kpt_conf)
+        self.center_norm = float(center_norm)
+        self.hist_bins = int(hist_bins)
+
+        self._next_id = 1
+        self.tracks: Dict[int, StableTrack] = {}
+
+    def gc(self, t: float):
+        dead = [sid for sid, tr in self.tracks.items() if (t - tr.last_t) > self.max_age_sec]
+        for sid in dead:
+            del self.tracks[sid]
+
+    def assign(self, frame_bgr: np.ndarray, t: float, dets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        self.gc(t)
+
+        # features
+        for d in dets:
+            bbox = d["bbox"]
+            d["center"] = _center(bbox)
+            d["kfeat"] = _kpt_feat(d.get("kpts_frame", None), conf_thr=self.kpt_conf)
+            d["hist"] = _hsv_hist(frame_bgr, bbox, bins=self.hist_bins)
+
+        sids = list(self.tracks.keys())
+        if not sids:
+            for d in dets:
+                sid = self._next_id; self._next_id += 1
+                self.tracks[sid] = StableTrack(
+                    stable_id=sid,
+                    bbox=d["bbox"].copy(),
+                    last_t=float(t),
+                    kfeat=d["kfeat"],
+                    hist=d["hist"],
+                )
+                d["stable_id"] = sid
+            return dets
+
+        pairs = []
+        for j, d in enumerate(dets):
+            best = []
+            for sid in sids:
+                tr = self.tracks[sid]
+                iou = _iou(tr.bbox, d["bbox"])
+                if iou < self.iou_min:
+                    continue
+                cdist = float(np.linalg.norm(_center(tr.bbox) - d["center"])) / self.center_norm
+                kdist = _cos_dist(tr.kfeat, d["kfeat"])
+                hdist = _l1(tr.hist, d["hist"])
+                cost = self.w_iou * (1.0 - iou) + self.w_center * cdist + self.w_kpt * kdist + self.w_hist * hdist
+                best.append((cost, sid))
+            if best:
+                cost, sid = min(best, key=lambda x: x[0])
+                pairs.append((cost, j, sid))
+
+        pairs.sort(key=lambda x: x[0])
+        used_sid = set()
+        used_det = set()
+
+        for cost, j, sid in pairs:
+            if j in used_det or sid in used_sid:
+                continue
+            used_det.add(j); used_sid.add(sid)
+
+            dets[j]["stable_id"] = sid
+            tr = self.tracks[sid]
+            tr.bbox = dets[j]["bbox"].copy()
+            tr.last_t = float(t)
+            tr.kfeat = dets[j]["kfeat"]
+            tr.hist = dets[j]["hist"]
+
+        for j, d in enumerate(dets):
+            if "stable_id" in d:
+                continue
+            sid = self._next_id; self._next_id += 1
+            self.tracks[sid] = StableTrack(
+                stable_id=sid,
+                bbox=d["bbox"].copy(),
+                last_t=float(t),
+                kfeat=d["kfeat"],
+                hist=d["hist"],
+            )
+            d["stable_id"] = sid
+
+        return dets
 
 
 # -------------------------
@@ -272,7 +463,7 @@ def parse_args():
     ap.add_argument("--show", action="store_true", help="ウィンドウ表示")
     ap.add_argument("--save_assets", action="store_true", help="crop/pose を保存してDBに記録")
 
-    # NEW: window controls
+    # window controls
     ap.add_argument("--win_name", type=str, default="focus realtime", help="表示ウィンドウ名")
     ap.add_argument("--win_w", type=int, default=0, help="ウィンドウ幅（0なら未指定）")
     ap.add_argument("--win_h", type=int, default=0, help="ウィンドウ高さ（0なら未指定）")
@@ -304,11 +495,23 @@ def parse_args():
     ap.add_argument("--skel_line", type=int, default=2)
     ap.add_argument("--skel_conf", type=float, default=0.2)
 
-    # eye mosaic (only when pose is available: mode skeleton/fusion)
+    # eye mosaic
     ap.add_argument("--mosaic_eyes", action="store_true", help="顔keypointから目周辺をモザイク（skeleton/fusionで有効）")
     ap.add_argument("--mosaic_conf", type=float, default=0.25, help="顔kpt conf閾値")
     ap.add_argument("--mosaic_pad", type=float, default=1.8, help="目領域の拡張倍率")
     ap.add_argument("--mosaic_scale", type=float, default=0.06, help="モザイク強さ(小さいほど強い) 例:0.04〜0.10")
+
+    # stable id
+    ap.add_argument("--stable_id", action="store_true", help="ID入れ替わり抑制：stable_idで表示する（tidはDBに保存）")
+    ap.add_argument("--stable_age", type=float, default=3.5, help="stable_idの保持秒（長いほど粘る）")
+    ap.add_argument("--stable_iou_min", type=float, default=0.05)
+    ap.add_argument("--stable_w_iou", type=float, default=2.5)
+    ap.add_argument("--stable_w_center", type=float, default=1.0)
+    ap.add_argument("--stable_w_kpt", type=float, default=1.6)
+    ap.add_argument("--stable_w_hist", type=float, default=0.7)
+    ap.add_argument("--stable_kpt_conf", type=float, default=0.2)
+    ap.add_argument("--stable_center_norm", type=float, default=500.0)
+    ap.add_argument("--stable_hist_bins", type=int, default=16)
 
     ap.add_argument("--commit_every", type=int, default=15)
     return ap.parse_args()
@@ -349,7 +552,8 @@ def main():
     need_pose = (args.mode in ("skeleton", "fusion"))
     draw_pose = bool(args.draw_skeleton) and (args.mode in ("skeleton", "fusion"))
     need_mosaic = bool(args.mosaic_eyes) and (args.mode in ("skeleton", "fusion"))
-    pose_model = YOLO(str((repo_root / posecfg["model"]).resolve())) if (need_pose or draw_pose or need_mosaic) else None
+    need_stable_kpt = bool(args.stable_id) and (args.mode in ("skeleton", "fusion"))
+    pose_model = YOLO(str((repo_root / posecfg["model"]).resolve())) if (need_pose or draw_pose or need_mosaic or need_stable_kpt) else None
 
     _ckpt, train_cfg, reg = load_ckpt(Path(args.ckpt).resolve(), mode=args.mode, device=args.device)
     img_tf = build_image_tf(int(train_cfg.img_size))
@@ -370,6 +574,20 @@ def main():
     buffers = MultiTrackBuffer(mode=args.mode, T=T, ttl_sec=float(args.ttl))
     latest: Dict[int, TrackDrawState] = {}
 
+    mapper = None
+    if args.stable_id:
+        mapper = StableIDMapper(
+            max_age_sec=float(args.stable_age),
+            iou_min=float(args.stable_iou_min),
+            w_iou=float(args.stable_w_iou),
+            w_center=float(args.stable_w_center),
+            w_kpt=float(args.stable_w_kpt),
+            w_hist=float(args.stable_w_hist),
+            kpt_conf=float(args.stable_kpt_conf),
+            center_norm=float(args.stable_center_norm),
+            hist_bins=int(args.stable_hist_bins),
+        )
+
     last_sample_t = -1e9
     frame_idx = 0
     sample_count = 0
@@ -379,13 +597,13 @@ def main():
     tracker_path = (repo_root / tracker_cfg).resolve()
     tracker_str = str(tracker_path) if tracker_path.exists() else str(tracker_cfg)
 
-    # NEW: setup window
+    # window
     fullscreen_state = bool(args.fullscreen)
     if args.show:
         setup_window(args.win_name, int(args.win_w), int(args.win_h), fullscreen_state)
 
     print(f"[realtime] mode={args.mode} T={T} sample_fps={sample_fps} det_imgsz={det_imgsz} pose_imgsz={pose_imgsz} crop_long={crop_long}")
-    print(f"[realtime] draw_skeleton={bool(args.draw_skeleton)} mosaic_eyes={bool(args.mosaic_eyes)} save_assets={bool(args.save_assets)} ttl={args.ttl}s")
+    print(f"[realtime] draw_skeleton={bool(args.draw_skeleton)} mosaic_eyes={bool(args.mosaic_eyes)} stable_id={bool(args.stable_id)} save_assets={bool(args.save_assets)} ttl={args.ttl}s")
     if args.show:
         print(f"[realtime] window='{args.win_name}' size=({args.win_w},{args.win_h}) fullscreen={fullscreen_state} (toggle: f)")
 
@@ -397,6 +615,7 @@ def main():
 
             t = frame_idx / float(fps)
 
+            # --- sampling ---
             do_sample = (t - last_sample_t) >= (1.0 / sample_fps - 1e-6)
             if do_sample:
                 last_sample_t = t
@@ -467,7 +686,8 @@ def main():
                             if args.save_assets:
                                 pose_json = {"keypoints": kpts_norm.tolist(), "format": "x,y,conf", "space": "crop", "normalized": "mean+RMS"}
 
-                            if draw_pose or need_mosaic:
+                            # map resized-crop coords -> crop0 coords -> frame coords
+                            if draw_pose or need_mosaic or need_stable_kpt:
                                 ch, cw = crop.shape[:2]
                                 kpts_on_crop0 = kpts.copy()
                                 if cw > 0 and ch > 0:
@@ -479,6 +699,7 @@ def main():
                                 kpts_frame_for_draw[:, 0] += float(x1i)
                                 kpts_frame_for_draw[:, 1] += float(y1i)
 
+                        # push buffer
                         buf = buffers.get(int(tid))
                         buf.push(frame_tensor=frame_tensor, pose_tensor=pose_tensor, t=t)
 
@@ -537,9 +758,17 @@ def main():
 
                 buffers.gc(t)
 
+                # TTL GC (tid-states)
                 for tid in list(latest.keys()):
                     if (t - latest[tid].last_seen_t) > float(args.ttl):
                         del latest[tid]
+
+            # --- stable_id mapping for display (every frame) ---
+            tid_to_sid: Dict[int, int] = {}
+            if mapper is not None:
+                dets = [{"tid": int(tid), "bbox": st.bbox.astype(np.float32), "kpts_frame": st.kpts_frame} for tid, st in latest.items()]
+                dets = mapper.assign(frame, t, dets)
+                tid_to_sid = {int(d["tid"]): int(d["stable_id"]) for d in dets}
 
             # --- draw ---
             scores = [st.score for st in latest.values() if not math.isnan(float(st.score))]
@@ -566,7 +795,9 @@ def main():
 
                 cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
                 score_i = clamp_1to10(float(st.score))
-                draw_label(frame, x1i, y1i, f"ID:{int(tid)}  score:{score_i}",
+
+                show_id = int(tid_to_sid.get(int(tid), int(tid))) if mapper is not None else int(tid)
+                draw_label(frame, x1i, y1i, f"ID:{show_id}  score:{score_i}",
                            font_scale=float(args.label_scale), thickness=int(args.label_thick))
 
                 if args.mosaic_eyes and (args.mode in ("skeleton", "fusion")) and st.kpts_frame is not None:
@@ -589,7 +820,6 @@ def main():
                 cv2.imshow(args.win_name, frame)
                 k = cv2.waitKey(1) & 0xFF
 
-                # NEW: fullscreen toggle with 'f'
                 if k == ord("f"):
                     fullscreen_state = not fullscreen_state
                     set_fullscreen(args.win_name, fullscreen_state)
@@ -612,8 +842,11 @@ if __name__ == "__main__":
     main()
 
 # examples:
-# window size
-# python scripts/07_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --win_w 1280 --win_h 720
+# stable_id + fullscreen toggle
+# python scripts/07_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen --stable_id --data_root realtime
 #
-# fullscreen (toggle with f)
-# python scripts/07_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen
+# stable_id + mosaic (skeleton/fusion)
+# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --mosaic_eyes --data_root realtime
+#
+# tune stable matcher (more strict):
+# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime

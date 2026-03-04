@@ -7,7 +7,7 @@ import math
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Deque, Tuple, List
+from typing import Dict, Optional, Deque, Tuple, List, Any
 
 import cv2
 import numpy as np
@@ -144,7 +144,7 @@ def _valid_kpt(kpts: np.ndarray, idx: int, conf_thr: float) -> Optional[Tuple[fl
 
 def apply_pixelate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, *, mosaic_scale: float):
     """
-    mosaic_scale: 0.03〜0.15くらい推奨
+    mosaic_scale: 0.03〜0.15くらい推奨（小さいほど強い）
     """
     h, w = img.shape[:2]
     x1 = max(0, min(w - 1, int(x1)))
@@ -159,7 +159,6 @@ def apply_pixelate(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, *, mosai
     if rh < 2 or rw < 2:
         return
 
-    # downscale -> upscale
     s = float(mosaic_scale)
     dw = max(1, int(round(rw * s)))
     dh = max(1, int(round(rh * s)))
@@ -179,7 +178,6 @@ def mosaic_eyes_from_kpts(
     """
     COCO17:
       left_eye=1, right_eye=2, nose=0, left_ear=3, right_ear=4
-    目の周辺矩形を作ってモザイク。
     """
     if kpts_frame is None or kpts_frame.ndim != 2 or kpts_frame.shape[0] < 5:
         return
@@ -188,7 +186,6 @@ def mosaic_eyes_from_kpts(
     re = _valid_kpt(kpts_frame, 2, conf_thr)
     nose = _valid_kpt(kpts_frame, 0, conf_thr)
 
-    # 片目しか取れないケースでもできるだけ推定
     if le is None and re is None:
         return
 
@@ -202,21 +199,17 @@ def mosaic_eyes_from_kpts(
     cx = float(np.mean(xs))
     cy = float(np.mean(ys))
 
-    # eye distance を幅の基準に（両目があれば）
     if le is not None and re is not None:
         eye_dist = float(math.hypot(le[0] - re[0], le[1] - re[1]))
     else:
-        # 片目しかない場合：鼻があれば nose- eye を利用、なければ固定
         if nose is not None:
             eye_dist = float(math.hypot(cx - nose[0], cy - nose[1])) * 1.2
         else:
-            eye_dist = 25.0  # fallback
+            eye_dist = 25.0
 
-    # 矩形サイズ（pad倍率）
     w = max(10.0, eye_dist * pad * 1.2)
     h = max(10.0, eye_dist * pad * 0.9)
 
-    # 鼻があるなら少し下に寄せすぎないよう調整
     if nose is not None:
         cy = 0.7 * cy + 0.3 * float(nose[1])
 
@@ -229,7 +222,7 @@ def mosaic_eyes_from_kpts(
 
 
 # -------------------------
-# Feature buffers per track
+# Feature helpers
 # -------------------------
 def make_pose_empty(K: int = 17, D: int = 3) -> np.ndarray:
     return np.zeros((K, D), dtype=np.float32)
@@ -266,6 +259,230 @@ def pose_to_frame_coords(
     return out
 
 
+def pad_seq(seq: List[Any], T_: int) -> List[Any]:
+    if len(seq) >= T_:
+        return seq[-T_:]
+    if len(seq) == 0:
+        return []
+    last = seq[-1]
+    return seq + [last] * (T_ - len(seq))
+
+
+# -------------------------
+# Stable ID remap (reduce ID switches)
+# -------------------------
+def _iou(a, b) -> float:
+    ax1, ay1, ax2, ay2 = [float(v) for v in a]
+    bx1, by1, bx2, by2 = [float(v) for v in b]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = max(1e-6, area_a + area_b - inter)
+    return float(inter / union)
+
+
+def _center(b):
+    x1, y1, x2, y2 = [float(v) for v in b]
+    return np.array([(x1 + x2) * 0.5, (y1 + y2) * 0.5], dtype=np.float32)
+
+
+def _kpt_feat(kpts_frame: Optional[np.ndarray], conf_thr: float = 0.2) -> np.ndarray:
+    """
+    kpts_frame: [K,3] in frame coords
+    -> translation/scale normalized feature (flattened)
+    """
+    if kpts_frame is None or kpts_frame.ndim != 2 or kpts_frame.shape[1] < 2:
+        return np.zeros((0,), dtype=np.float32)
+
+    xy = kpts_frame[:, :2].astype(np.float32)
+
+    if kpts_frame.shape[1] >= 3:
+        c = kpts_frame[:, 2].astype(np.float32)
+        m = c >= conf_thr
+        if int(m.sum()) >= 4:
+            xy = xy[m]
+
+    if xy.shape[0] < 4:
+        return np.zeros((0,), dtype=np.float32)
+
+    mu = xy.mean(axis=0, keepdims=True)
+    z = xy - mu
+    s = float(np.sqrt((z ** 2).sum(axis=1).mean()) + 1e-6)
+    z = z / s
+    return z.reshape(-1)
+
+
+def _cos_dist(a: np.ndarray, b: np.ndarray) -> float:
+    if a.size == 0 or b.size == 0 or a.shape != b.shape:
+        return 1.0
+    na = float(np.linalg.norm(a) + 1e-6)
+    nb = float(np.linalg.norm(b) + 1e-6)
+    return float(1.0 - (a @ b) / (na * nb))
+
+
+def _hsv_hist(frame_bgr: np.ndarray, bbox, bins=16) -> np.ndarray:
+    x1, y1, x2, y2 = [int(round(v)) for v in bbox]
+    h, w = frame_bgr.shape[:2]
+    x1 = max(0, min(w - 1, x1)); x2 = max(0, min(w, x2))
+    y1 = max(0, min(h - 1, y1)); y2 = max(0, min(h, y2))
+    if x2 <= x1 or y2 <= y1:
+        return np.zeros((bins * 3,), dtype=np.float32)
+
+    roi = frame_bgr[y1:y2, x1:x2]
+    if roi.size == 0:
+        return np.zeros((bins * 3,), dtype=np.float32)
+
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    hs = []
+    for ch in range(3):
+        hist = cv2.calcHist([hsv], [ch], None, [bins], [0, 256]).reshape(-1).astype(np.float32)
+        hist /= (hist.sum() + 1e-6)
+        hs.append(hist)
+    return np.concatenate(hs, axis=0)
+
+
+def _l1(a: np.ndarray, b: np.ndarray) -> float:
+    if a.size == 0 or b.size == 0 or a.shape != b.shape:
+        return 1.0
+    return float(np.abs(a - b).mean())
+
+
+@dataclass
+class StableTrack:
+    stable_id: int
+    bbox: np.ndarray
+    last_frame: int
+    kfeat: np.ndarray
+    hist: np.ndarray
+
+
+class StableIDMapper:
+    """
+    Map detections to stable IDs with greedy assignment (fast).
+    Cost = w_iou*(1-iou) + w_center*center_dist_norm + w_kpt*cos_dist + w_hist*l1
+    """
+    def __init__(
+            self,
+            *,
+            max_age: int = 40,
+            iou_min: float = 0.05,
+            w_iou: float = 2.5,
+            w_center: float = 1.0,
+            w_kpt: float = 1.6,
+            w_hist: float = 0.7,
+            kpt_conf: float = 0.2,
+            center_norm: float = 500.0,
+            hist_bins: int = 16,
+    ):
+        self.max_age = int(max_age)
+        self.iou_min = float(iou_min)
+        self.w_iou = float(w_iou)
+        self.w_center = float(w_center)
+        self.w_kpt = float(w_kpt)
+        self.w_hist = float(w_hist)
+        self.kpt_conf = float(kpt_conf)
+        self.center_norm = float(center_norm)
+        self.hist_bins = int(hist_bins)
+
+        self._next_id = 1
+        self.tracks: Dict[int, StableTrack] = {}
+
+    def gc(self, frame_idx: int):
+        dead = [sid for sid, tr in self.tracks.items() if frame_idx - tr.last_frame > self.max_age]
+        for sid in dead:
+            del self.tracks[sid]
+
+    def assign(
+            self,
+            frame_bgr: np.ndarray,
+            frame_idx: int,
+            dets: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        dets item needs:
+          bbox(np.ndarray float32 [x1,y1,x2,y2]),
+          kpts_frame(optional np.ndarray [K,3])
+        returns dets with 'stable_id'
+        """
+        self.gc(frame_idx)
+
+        # precompute det features
+        for d in dets:
+            bbox = d["bbox"]
+            d["center"] = _center(bbox)
+            d["kfeat"] = _kpt_feat(d.get("kpts_frame", None), conf_thr=self.kpt_conf)
+            d["hist"] = _hsv_hist(frame_bgr, bbox, bins=self.hist_bins)
+
+        # no existing track -> assign new
+        sids = list(self.tracks.keys())
+        if not sids:
+            for d in dets:
+                sid = self._next_id; self._next_id += 1
+                self.tracks[sid] = StableTrack(
+                    stable_id=sid,
+                    bbox=d["bbox"].copy(),
+                    last_frame=frame_idx,
+                    kfeat=d["kfeat"],
+                    hist=d["hist"],
+                )
+                d["stable_id"] = sid
+            return dets
+
+        # candidate pairs: (cost, det_index, stable_id)
+        pairs = []
+        for j, d in enumerate(dets):
+            best_for_track = []
+            for sid in sids:
+                tr = self.tracks[sid]
+                iou = _iou(tr.bbox, d["bbox"])
+                if iou < self.iou_min:
+                    continue
+                cdist = float(np.linalg.norm(_center(tr.bbox) - d["center"])) / self.center_norm
+                kdist = _cos_dist(tr.kfeat, d["kfeat"])
+                hdist = _l1(tr.hist, d["hist"])
+                cost = self.w_iou * (1.0 - iou) + self.w_center * cdist + self.w_kpt * kdist + self.w_hist * hdist
+                best_for_track.append((cost, sid))
+            if best_for_track:
+                cost, sid = min(best_for_track, key=lambda x: x[0])
+                pairs.append((cost, j, sid))
+
+        pairs.sort(key=lambda x: x[0])
+
+        used_sid = set()
+        used_det = set()
+
+        for cost, j, sid in pairs:
+            if j in used_det or sid in used_sid:
+                continue
+            used_det.add(j); used_sid.add(sid)
+            dets[j]["stable_id"] = sid
+
+            tr = self.tracks[sid]
+            tr.bbox = dets[j]["bbox"].copy()
+            tr.last_frame = frame_idx
+            tr.kfeat = dets[j]["kfeat"]
+            tr.hist = dets[j]["hist"]
+
+        # remaining dets -> new ids
+        for j, d in enumerate(dets):
+            if "stable_id" in d:
+                continue
+            sid = self._next_id; self._next_id += 1
+            self.tracks[sid] = StableTrack(
+                stable_id=sid,
+                bbox=d["bbox"].copy(),
+                last_frame=frame_idx,
+                kfeat=d["kfeat"],
+                hist=d["hist"],
+            )
+            d["stable_id"] = sid
+
+        return dets
+
+
 # -------------------------
 # Logging
 # -------------------------
@@ -277,7 +494,10 @@ CREATE TABLE IF NOT EXISTS predictions (
   video_path TEXT NOT NULL,
   frame_idx INTEGER NOT NULL,
   t REAL NOT NULL,
+
   track_id INTEGER NOT NULL,
+  stable_id INTEGER,
+
   score REAL NOT NULL,
   score_clamped INTEGER NOT NULL,
   det_conf REAL,
@@ -286,6 +506,7 @@ CREATE TABLE IF NOT EXISTS predictions (
 
 CREATE INDEX IF NOT EXISTS idx_pred_video_t ON predictions(video_path, t);
 CREATE INDEX IF NOT EXISTS idx_pred_video_track ON predictions(video_path, track_id);
+CREATE INDEX IF NOT EXISTS idx_pred_video_stable ON predictions(video_path, stable_id);
 """
 
 
@@ -298,7 +519,7 @@ def open_log_db(path: Path) -> sqlite3.Connection:
 
 
 # -------------------------
-# Main
+# CLI
 # -------------------------
 def parse_args():
     ap = argparse.ArgumentParser()
@@ -352,9 +573,24 @@ def parse_args():
     ap.add_argument("--mosaic_pad", type=float, default=1.8, help="目領域の拡張倍率")
     ap.add_argument("--mosaic_scale", type=float, default=0.06, help="モザイク強さ(小さいほど強い) 例:0.04〜0.10")
 
+    # stable id remap
+    ap.add_argument("--stable_id", action="store_true", help="ID入れ替わり抑制：stable_idを再割当して表示/ログする")
+    ap.add_argument("--stable_max_age", type=int, default=40)
+    ap.add_argument("--stable_iou_min", type=float, default=0.05)
+    ap.add_argument("--stable_w_iou", type=float, default=2.5)
+    ap.add_argument("--stable_w_center", type=float, default=1.0)
+    ap.add_argument("--stable_w_kpt", type=float, default=1.6)
+    ap.add_argument("--stable_w_hist", type=float, default=0.7)
+    ap.add_argument("--stable_kpt_conf", type=float, default=0.2)
+    ap.add_argument("--stable_center_norm", type=float, default=500.0)
+    ap.add_argument("--stable_hist_bins", type=int, default=16)
+
     return ap.parse_args()
 
 
+# -------------------------
+# Main
+# -------------------------
 def main():
     args = parse_args()
 
@@ -436,6 +672,20 @@ def main():
 
     class_avg_ema: Optional[float] = None
 
+    mapper = None
+    if args.stable_id:
+        mapper = StableIDMapper(
+            max_age=int(args.stable_max_age),
+            iou_min=float(args.stable_iou_min),
+            w_iou=float(args.stable_w_iou),
+            w_center=float(args.stable_w_center),
+            w_kpt=float(args.stable_w_kpt),
+            w_hist=float(args.stable_w_hist),
+            kpt_conf=float(args.stable_kpt_conf),
+            center_norm=float(args.stable_center_norm),
+            hist_bins=int(args.stable_hist_bins),
+        )
+
     results = det.track(
         source=str(video_path),
         stream=True,
@@ -471,6 +721,7 @@ def main():
             xyxy = r.boxes.xyxy.cpu().numpy().astype(np.float32)
             confs = r.boxes.conf.cpu().numpy().astype(np.float32)
 
+        # --- update buffers/states using tracker tid ---
         for i, tid in enumerate(tids.tolist()):
             x1, y1, x2, y2 = xyxy[i].tolist()
             det_conf = float(confs[i])
@@ -490,10 +741,9 @@ def main():
                 ft = img_tf(pil)
                 img_buf.setdefault(tid, deque(maxlen=T)).append(ft)
 
-            # pose + draw coords
             kpts_for_draw = None
 
-            if args.mode in ("skeleton", "fusion") or (args.draw_skeleton and args.mode in ("skeleton", "fusion")) or args.mosaic_eyes:
+            if (args.mode in ("skeleton", "fusion")) or (args.draw_skeleton and args.mode in ("skeleton", "fusion")) or args.mosaic_eyes or (args.stable_id and args.mode in ("skeleton", "fusion")):
                 crop_pose_in = crop_resize_for_pose(crop, crop_long_side)
                 ph, pw = crop_pose_in.shape[:2]
                 ch, cw = crop.shape[:2]
@@ -522,15 +772,6 @@ def main():
                     crop_xy1=(x1i, y1i),
                 )
 
-            # prediction
-            def pad_seq(seq: List, T_: int):
-                if len(seq) >= T_:
-                    return seq[-T_:]
-                if len(seq) == 0:
-                    return []
-                last = seq[-1]
-                return seq + [last] * (T_ - len(seq))
-
             frames_in: Optional[torch.Tensor] = None
             poses_in: Optional[torch.Tensor] = None
 
@@ -552,9 +793,9 @@ def main():
             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
             if tid in tracks:
                 st = tracks[tid]
-                st.bbox = ema_bbox(st.bbox, bbox_new, args.bbox_alpha)
+                st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
                 if not math.isnan(score_raw):
-                    st.score = ema(st.score, float(score_raw), args.score_alpha)
+                    st.score = ema(st.score, float(score_raw), float(args.score_alpha))
                 st.last_seen = frame_idx
                 st.det_conf = det_conf
                 if kpts_for_draw is not None:
@@ -577,7 +818,10 @@ def main():
 
                 if args.mode in ("skeleton", "fusion"):
                     last_pose = pose_buf.get(tid, deque())[-1] if pose_buf.get(tid, None) else make_pose_empty()
-                    pose_path.write_text(json.dumps({"keypoints": last_pose.tolist(), "format": "x,y,conf", "space": "crop"}, ensure_ascii=False))
+                    pose_path.write_text(
+                        json.dumps({"keypoints": last_pose.tolist(), "format": "x,y,conf", "space": "crop"}, ensure_ascii=False),
+                        encoding="utf-8"
+                    )
 
         # alive tracks
         alive: List[Tuple[int, TrackState]] = []
@@ -589,28 +833,52 @@ def main():
                 img_buf.pop(tid, None)
                 pose_buf.pop(tid, None)
 
+        # stable id mapping (optional)
+        tid_to_sid: Dict[int, int] = {}
+        if mapper is not None:
+            dets = [{"tid": tid, "bbox": st.bbox.astype(np.float32), "kpts_frame": st.kpts_frame} for tid, st in alive]
+            dets = mapper.assign(frame, frame_idx, dets)
+            tid_to_sid = {int(d["tid"]): int(d["stable_id"]) for d in dets}
+
         # class avg
         scores_now = [float(st.score) for _tid, st in alive if not math.isnan(float(st.score))]
         if scores_now:
             avg_now = float(np.mean(scores_now))
-            class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, args.class_alpha)
+            class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
             avg_i = clamp_1to10(class_avg_ema)
-            draw_label(frame, 20, 55, f"Class Avg: {avg_i}   (n={len(scores_now)})",
-                       font_scale=args.class_scale, thickness=args.class_thick)
+            draw_label(
+                frame, 20, 55,
+                f"Class Avg: {avg_i}   (n={len(scores_now)})",
+                font_scale=float(args.class_scale),
+                thickness=int(args.class_thick),
+            )
         else:
-            draw_label(frame, 20, 55, "Class Avg: -   (n=0)",
-                       font_scale=args.class_scale, thickness=args.class_thick)
+            draw_label(
+                frame, 20, 55,
+                "Class Avg: -   (n=0)",
+                font_scale=float(args.class_scale),
+                thickness=int(args.class_thick),
+            )
 
         # draw + mosaic
         for tid, st in alive:
             x1, y1, x2, y2 = st.bbox.astype(int)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), int(args.box_thick))
+            bb = clamp_bbox(x1, y1, x2, y2, W, H)
+            if bb is None:
+                continue
+            x1i, y1i, x2i, y2i = bb
 
-            score_i = clamp_1to10(st.score)
-            draw_label(frame, x1, y1, f"ID:{tid}  score:{score_i}",
-                       font_scale=args.label_scale, thickness=args.label_thick)
+            cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
 
-            # mosaic eyes first (so skeleton/text stays visible on top if you want)
+            score_i = clamp_1to10(float(st.score))
+            show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
+            draw_label(
+                frame, x1i, y1i,
+                f"ID:{int(show_id)}  score:{score_i}",
+                font_scale=float(args.label_scale),
+                thickness=int(args.label_thick),
+            )
+
             if args.mosaic_eyes and st.kpts_frame is not None:
                 mosaic_eyes_from_kpts(
                     frame,
@@ -621,22 +889,35 @@ def main():
                 )
 
             if args.draw_skeleton and st.kpts_frame is not None and args.mode in ("skeleton", "fusion"):
-                draw_skeleton(frame, st.kpts_frame,
-                              conf_thr=float(args.skel_conf),
-                              radius=int(args.skel_radius),
-                              line_thick=int(args.skel_line))
+                draw_skeleton(
+                    frame,
+                    st.kpts_frame,
+                    conf_thr=float(args.skel_conf),
+                    radius=int(args.skel_radius),
+                    line_thick=int(args.skel_line),
+                )
 
         # log DB
         for tid, st in alive:
             x1, y1, x2, y2 = st.bbox.tolist()
             score = float(st.score)
+            sid = tid_to_sid.get(tid, None) if (args.stable_id and mapper is not None) else None
             cur.execute(
                 """
-                INSERT INTO predictions(video_path, frame_idx, t, track_id, score, score_clamped, det_conf, x1,y1,x2,y2)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO predictions(video_path, frame_idx, t, track_id, stable_id, score, score_clamped, det_conf, x1,y1,x2,y2)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
-                (str(video_path), int(frame_idx), float(t), int(tid), float(score), int(clamp_1to10(score)), float(st.det_conf),
-                 float(x1), float(y1), float(x2), float(y2))
+                (
+                    str(video_path),
+                    int(frame_idx),
+                    float(t),
+                    int(tid),
+                    (int(sid) if sid is not None else None),
+                    float(score),
+                    int(clamp_1to10(score)),
+                    float(st.det_conf),
+                    float(x1), float(y1), float(x2), float(y2),
+                )
             )
 
         if frame_idx % int(args.log_every) == 0:
@@ -647,7 +928,7 @@ def main():
             writer.write(frame)
 
         if frame_idx % 120 == 0:
-            print(f"frame={frame_idx} t={t:.2f}s alive={len(alive)} commits={committed}")
+            print(f"frame={frame_idx} t={t:.2f}s alive={len(alive)} commits={committed} stable_id={bool(args.stable_id)}")
 
     conn.commit()
     conn.close()
@@ -669,8 +950,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[WARN] 音声を再生できませんでした: {e}")
 
-# examples:
-# 目モザイク付き
-# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --mosaic_scale 0.06 --mosaic_pad 1.8
+# command
 
-# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --skel_line 2 --skel_radius 3 --skel_conf 0.25
+# 目モザイク + 骨格線 + stable_id（おすすめ）
+# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id
+
+# stable_id を強めたいとき（交差が多い教室向け）
+# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2
