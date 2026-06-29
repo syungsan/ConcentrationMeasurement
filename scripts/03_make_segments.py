@@ -1,3 +1,6 @@
+import time
+SCRIPT_STARTED_AT = time.perf_counter()
+
 from pathlib import Path
 import yaml
 
@@ -50,8 +53,16 @@ def main():
 
         for (t_start, t_end) in segs:
             cur.execute(
-                "INSERT OR IGNORE INTO segments(video_id, track_id, t_start, t_end) VALUES(?,?,?,?)",
-                (video_id, tid, float(t_start), float(t_end)),
+                "INSERT OR IGNORE INTO windows(video_id, t_start, t_end) VALUES(?,?,?)",
+                (video_id, float(t_start), float(t_end)),
+            )
+            window_id = int(cur.execute(
+                "SELECT id FROM windows WHERE video_id=? AND t_start=? AND t_end=?",
+                (video_id, float(t_start), float(t_end)),
+            ).fetchone()[0])
+            cur.execute(
+                "INSERT OR IGNORE INTO segments(window_id, track_id) VALUES(?,?)",
+                (window_id, tid),
             )
             total += 1
 
@@ -60,13 +71,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-    import winsound
     try:
-        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-    except Exception as e:
-        print(f"[WARN] 音声を再生できませんでした: {e}")
+        main()
+        import winsound
+        try:
+            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[WARN] 音声を再生できませんでした: {e}")
+    finally:
+        elapsed = time.perf_counter() - SCRIPT_STARTED_AT
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
 # command
 # python scripts/03_make_segments.py --data_root datasets/lesson_001

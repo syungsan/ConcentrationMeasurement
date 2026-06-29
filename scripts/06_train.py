@@ -1,6 +1,9 @@
 #0 scripts/06_train.py
 from __future__ import annotations
 
+import time
+SCRIPT_STARTED_AT = time.perf_counter()
+
 import argparse
 import json
 import math
@@ -21,6 +24,7 @@ from torchvision import transforms
 
 from lib.pose_norm import normalize_pose_kpts
 from lib.model_defs import Cfg, Regressor, Agg  # ★分離import
+from lib.situation import SITUATIONS, situation_one_hot
 
 
 # -------------------------
@@ -204,6 +208,12 @@ class MultiSQLiteSegmentDataset(Dataset):
         return out
 
     def _load_label(self, cur: sqlite3.Cursor, seg_id: int) -> Optional[float]:
+        if self.cfg.label_source == "consensus":
+            row = cur.execute(
+                "SELECT mean_score FROM label_consensus WHERE segment_id=?",
+                (int(seg_id),),
+            ).fetchone()
+            return float(row[0]) if row and row[0] is not None else None
         qmarks = ",".join(["?"] * len(self.cfg.raters))
         rows = cur.execute(
             f"SELECT score FROM labels WHERE segment_id=? AND rater IN ({qmarks})",
@@ -216,13 +226,21 @@ class MultiSQLiteSegmentDataset(Dataset):
             return None
         return agg_scores(scores, self.cfg.agg)
 
-    def _load_frames_and_poses(self, db_i: int, seg_id: int) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], float]:
+    def _load_frames_and_poses(self, db_i: int, seg_id: int) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], torch.Tensor, float]:
         conn = self._get_conn(db_i)
         cur = conn.cursor()
 
         y = self._load_label(cur, seg_id)
         if y is None:
             raise RuntimeError(f"segment {seg_id} has no label for raters={self.cfg.raters}")
+
+        situation_row = cur.execute(
+            "SELECT w.situation FROM segments s JOIN windows w ON w.id=s.window_id WHERE s.id=?",
+            (int(seg_id),)
+        ).fetchone()
+        if not situation_row or not situation_row[0]:
+            raise RuntimeError(f"segment {seg_id} has no situation")
+        situation = situation_one_hot(str(situation_row[0]))
 
         rows = cur.execute(
             "SELECT t, crop_path, pose_path FROM segment_frames WHERE segment_id=? ORDER BY t",
@@ -252,14 +270,14 @@ class MultiSQLiteSegmentDataset(Dataset):
                 ps.append(self._load_pose(db_i, pose_path))
             poses = torch.from_numpy(np.stack(ps, axis=0))  # [T,K,3]
 
-        return frames, poses, float(y)
+        return frames, poses, situation, float(y)
 
     def __getitem__(self, idx: int):
         for _ in range(10):
             db_i, seg_id = self.items[idx]
             try:
-                frames, poses, y = self._load_frames_and_poses(int(db_i), int(seg_id))
-                return frames, poses, torch.tensor(y, dtype=torch.float32)
+                frames, poses, situation, y = self._load_frames_and_poses(int(db_i), int(seg_id))
+                return frames, poses, situation, torch.tensor(y, dtype=torch.float32)
             except FileNotFoundError:
                 idx = random.randint(0, len(self.items) - 1)
                 continue
@@ -268,7 +286,7 @@ class MultiSQLiteSegmentDataset(Dataset):
 
 
 def collate_fn(batch):
-    frames_list, poses_list, y_list = zip(*batch)
+    frames_list, poses_list, situation_list, y_list = zip(*batch)
 
     frames = None
     if frames_list[0] is not None:
@@ -278,8 +296,9 @@ def collate_fn(batch):
     if poses_list[0] is not None:
         poses = torch.stack(poses_list, dim=0)  # [B,T,K,3]
 
+    situations = torch.stack(situation_list, dim=0)  # [B,3]
     y = torch.stack(y_list, dim=0)  # [B]
-    return frames, poses, y
+    return frames, poses, situations, y
 
 
 # -------------------------
@@ -289,13 +308,14 @@ def collate_fn(batch):
 def evaluate(model: nn.Module, loader: DataLoader, device: str) -> Dict[str, float]:
     model.eval()
     preds, ys = [], []
-    for frames, poses, y in loader:
+    for frames, poses, situations, y in loader:
         if frames is not None:
             frames = frames.to(device)
         if poses is not None:
             poses = poses.to(device)
+        situations = situations.to(device)
         y = y.to(device)
-        yhat = model(frames, poses)
+        yhat = model(frames, poses, situations)
         preds.append(yhat.detach().cpu())
         ys.append(y.detach().cpu())
     pred = torch.cat(preds)
@@ -320,16 +340,29 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
 
-        qmarks = ",".join(["?"] * len(cfg.raters))
-
-        rows = cur.execute(f"""
-            SELECT s.id, s.video_id, s.t_start, s.t_end
-            FROM segments s
-            JOIN segment_frames sf ON sf.segment_id = s.id
-            JOIN labels l ON l.segment_id = s.id AND l.rater IN ({qmarks})
-            GROUP BY s.id
-            ORDER BY s.video_id, s.t_start, s.track_id
-        """, cfg.raters).fetchall()
+        if cfg.label_source == "consensus":
+            rows = cur.execute("""
+                SELECT s.id, w.video_id, w.t_start, w.t_end
+                FROM segments s
+                JOIN windows w ON w.id = s.window_id
+                JOIN segment_frames sf ON sf.segment_id = s.id
+                JOIN label_consensus c ON c.segment_id = s.id
+                WHERE w.situation IN (?, ?, ?)
+                GROUP BY s.id
+                ORDER BY w.video_id, w.t_start, s.track_id
+            """, list(SITUATIONS)).fetchall()
+        else:
+            qmarks = ",".join(["?"] * len(cfg.raters))
+            rows = cur.execute(f"""
+                SELECT s.id, w.video_id, w.t_start, w.t_end
+                FROM segments s
+                JOIN windows w ON w.id = s.window_id
+                JOIN segment_frames sf ON sf.segment_id = s.id
+                JOIN labels l ON l.segment_id = s.id AND l.rater IN ({qmarks})
+                WHERE w.situation IN (?, ?, ?)
+                GROUP BY s.id
+                ORDER BY w.video_id, w.t_start, s.track_id
+            """, cfg.raters + list(SITUATIONS)).fetchall()
 
         conn.close()
 
@@ -397,15 +430,16 @@ def train_one(cfg: Cfg) -> Tuple[float, Dict[str, torch.Tensor]]:
         total = 0.0
         n = 0
 
-        for frames, poses, y in dl_tr:
+        for frames, poses, situations, y in dl_tr:
             if frames is not None:
                 frames = frames.to(cfg.device, non_blocking=True)
             if poses is not None:
                 poses = poses.to(cfg.device, non_blocking=True)
+            situations = situations.to(cfg.device, non_blocking=True)
             y = y.to(cfg.device, non_blocking=True)
 
             opt.zero_grad(set_to_none=True)
-            yhat = model(frames, poses)
+            yhat = model(frames, poses, situations)
             loss = loss_fn(yhat, y)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -442,12 +476,18 @@ def parse_args():
         help="授業データrootをカンマ区切りで複数指定 例: datasets/hara,datasets/minamoto,datasets/miyazaki"
     )
     ap.add_argument(
+        "--db_paths", type=str, default="",
+        help="data_rootsに対応するDBをカンマ区切りで直接指定（マージ後DB用）",
+    )
+    ap.add_argument(
         "--raters",
         type=str,
-        required=True,
+        default="",
         help="ラベラー名をカンマ区切りで複数指定 例: teacherA,teacherB"
     )
     ap.add_argument("--agg", type=str, default="mean", choices=["mean", "median"])
+    ap.add_argument("--label_source", type=str, default="individual", choices=["individual", "consensus"],
+                    help="individual=評価者別labels / consensus=マージ後の平均ラベル")
 
     ap.add_argument("--epochs", type=int, default=20)
     ap.add_argument("--batch_size", type=int, default=16)
@@ -479,7 +519,12 @@ def main():
     if not data_roots:
         raise RuntimeError("no data_roots")
 
-    db_paths = [rpath(dr, ycfg["paths"]["db_path"]) for dr in data_roots]
+    if args.db_paths.strip():
+        db_paths = [Path(s.strip()).resolve() for s in args.db_paths.split(",") if s.strip()]
+        if len(db_paths) != len(data_roots):
+            raise RuntimeError("db_paths must have the same number of entries as data_roots")
+    else:
+        db_paths = [rpath(dr, ycfg["paths"]["db_path"]) for dr in data_roots]
     for p in db_paths:
         if not p.exists():
             raise FileNotFoundError(f"DB not found: {p}")
@@ -491,7 +536,7 @@ def main():
     T = args.T if args.T > 0 else T_default
 
     raters = [s.strip() for s in args.raters.split(",") if s.strip()]
-    if not raters:
+    if args.label_source == "individual" and not raters:
         raise RuntimeError("no raters")
 
     base = Cfg(
@@ -499,6 +544,7 @@ def main():
         db_paths=db_paths,
         raters=raters,
         agg=args.agg,  # type: ignore[arg-type]
+        label_source=args.label_source,  # type: ignore[arg-type]
         mode=args.mode,  # type: ignore[arg-type]
         temporal=args.temporal,  # type: ignore[arg-type]
         epochs=args.epochs,
@@ -543,7 +589,13 @@ def main():
     cfg_dict["db_paths"]   = [str(p) for p in cfg_dict["db_paths"]]
 
     torch.save(
-        {"cfg": cfg_dict, "results": results, "mode": save_mode, "state_dict": save_state},
+        {
+            "cfg": cfg_dict,
+            "results": results,
+            "mode": save_mode,
+            "state_dict": save_state,
+            "feature_schema": "image_pose_situation_v1",
+        },
         out
     )
     print("saved:", out)
@@ -551,13 +603,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-    import winsound
     try:
-        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-    except Exception as e:
-        print(f"[WARN] 音声を再生できませんでした: {e}")
+        main()
+        import winsound
+        try:
+            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[WARN] 音声を再生できませんでした: {e}")
+    finally:
+        elapsed = time.perf_counter() - SCRIPT_STARTED_AT
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
 # command
 # python scripts/06_train.py --data_roots datasets/university/hara,datasets/university/minamoto,datasets/university/miyazaki,datasets/elementary_school/unnan_nishi --raters Tadano --agg mean --epochs 20 --batch_size 16 --temporal transformer --mode skeleton --save_name models/transformer_skeleton_modes.pt

@@ -1,6 +1,9 @@
 # scripts/08_video_offline.py
 from __future__ import annotations
 
+import time
+SCRIPT_STARTED_AT = time.perf_counter()
+
 import argparse
 import json
 import math
@@ -18,7 +21,8 @@ from collections import deque
 from ultralytics import YOLO
 
 from lib.runroot import get_data_root, rpath
-from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
+from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to7
+from lib.situation import SITUATIONS
 from lib.pose_norm import normalize_pose_kpts
 
 
@@ -500,6 +504,7 @@ CREATE TABLE IF NOT EXISTS predictions (
 
   score REAL NOT NULL,
   score_clamped INTEGER NOT NULL,
+  situation TEXT NOT NULL CHECK(situation IN ('聞く', '書く', '話し合う')),
   det_conf REAL,
   x1 REAL, y1 REAL, x2 REAL, y2 REAL
 );
@@ -526,6 +531,7 @@ def parse_args():
 
     ap.add_argument("--ckpt", type=str, required=True, help="学習済みckpt (.pt)")
     ap.add_argument("--mode", type=str, required=True, choices=["image", "skeleton", "fusion"])
+    ap.add_argument("--situation", type=str, required=True, choices=SITUATIONS)
     ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     ap.add_argument("--data_root", type=str, default=None)
@@ -788,7 +794,7 @@ def main():
             if (args.mode == "image" and frames_in is None) or (args.mode == "skeleton" and poses_in is None) or (args.mode == "fusion" and (frames_in is None or poses_in is None)):
                 score_raw = float("nan")
             else:
-                score_raw = predict_score(reg, frames_in, poses_in, device=args.device)
+                score_raw = predict_score(reg, frames_in, poses_in, device=args.device, situation=args.situation)
 
             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
             if tid in tracks:
@@ -845,7 +851,7 @@ def main():
         if scores_now:
             avg_now = float(np.mean(scores_now))
             class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
-            avg_i = clamp_1to10(class_avg_ema)
+            avg_i = clamp_1to7(class_avg_ema)
             draw_label(
                 frame, 20, 55,
                 f"Class Avg: {avg_i}   (n={len(scores_now)})",
@@ -870,7 +876,7 @@ def main():
 
             cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
 
-            score_i = clamp_1to10(float(st.score))
+            score_i = clamp_1to7(float(st.score))
             show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
             draw_label(
                 frame, x1i, y1i,
@@ -904,8 +910,8 @@ def main():
             sid = tid_to_sid.get(tid, None) if (args.stable_id and mapper is not None) else None
             cur.execute(
                 """
-                INSERT INTO predictions(video_path, frame_idx, t, track_id, stable_id, score, score_clamped, det_conf, x1,y1,x2,y2)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO predictions(video_path, frame_idx, t, track_id, stable_id, score, score_clamped, situation, det_conf, x1,y1,x2,y2)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     str(video_path),
@@ -914,7 +920,8 @@ def main():
                     int(tid),
                     (int(sid) if sid is not None else None),
                     float(score),
-                    int(clamp_1to10(score)),
+                    int(clamp_1to7(score)),
+                    args.situation,
                     float(st.det_conf),
                     float(x1), float(y1), float(x2), float(y2),
                 )
@@ -942,13 +949,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-    import winsound
     try:
-        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-    except Exception as e:
-        print(f"[WARN] 音声を再生できませんでした: {e}")
+        main()
+        import winsound
+        try:
+            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[WARN] 音声を再生できませんでした: {e}")
+    finally:
+        elapsed = time.perf_counter() - SCRIPT_STARTED_AT
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
 # command
 
@@ -956,4 +968,4 @@ if __name__ == "__main__":
 # python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id
 
 # stable_id を強めたいとき（交差が多い教室向け）
-# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2
+# python scripts/08_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --situation 聞く --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2

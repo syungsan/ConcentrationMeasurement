@@ -17,7 +17,8 @@ from lib.db import connect, init_db, upsert_video, ensure_track
 from lib.runroot import get_data_root, rpath
 from lib.pose_norm import normalize_pose_kpts
 from lib.seq_buffer import MultiTrackBuffer
-from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to10
+from lib.infer import load_ckpt, build_image_tf, predict_score, clamp_1to7
+from lib.situation import SITUATIONS
 
 Mode = Literal["image", "skeleton", "fusion"]
 
@@ -456,6 +457,7 @@ def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", type=str, required=True, help="06_train.py で保存した .pt")
     ap.add_argument("--mode", type=str, default="fusion", choices=["image", "skeleton", "fusion"])
+    ap.add_argument("--situation", type=str, required=True, choices=SITUATIONS)
     ap.add_argument("--source", type=str, default="0", help="0(webcam) or video path")
     ap.add_argument("--data_root", type=str, default=None)
     ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -705,7 +707,7 @@ def main():
 
                         if buf.ready():
                             frames_b, poses_b = buf.get_batch()
-                            yhat = predict_score(reg, frames_b, poses_b, args.device)
+                            yhat = predict_score(reg, frames_b, poses_b, args.device, args.situation)
 
                             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
                             if tid in latest:
@@ -739,14 +741,14 @@ def main():
                             conn.execute(
                                 """
                                 INSERT INTO predictions(
-                                    video_id, frame_idx, t, track_id, mode, yhat, score_int,
+                                    video_id, frame_idx, t, track_id, mode, yhat, score_int, situation,
                                     x1,y1,x2,y2, det_conf, crop_path, pose_path
                                 )
-                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                                 """,
                                 (
                                     video_id, int(frame_idx), float(t), int(tid), str(args.mode),
-                                    float(yhat), int(clamp_1to10(yhat)),
+                                    float(yhat), int(clamp_1to7(yhat)), args.situation,
                                     float(x1), float(y1), float(x2), float(y2),
                                     float(det_conf),
                                     crop_rel, pose_rel
@@ -775,7 +777,7 @@ def main():
             if scores:
                 avg_now = float(np.mean(scores))
                 class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
-                avg_i = clamp_1to10(class_avg_ema)
+                avg_i = clamp_1to7(class_avg_ema)
                 draw_label(frame, 20, 55, f"Class Avg: {avg_i}   (n={len(scores)})",
                            font_scale=float(args.class_scale), thickness=int(args.class_thick))
             else:
@@ -794,7 +796,7 @@ def main():
                 x1i, y1i, x2i, y2i = bb
 
                 cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
-                score_i = clamp_1to10(float(st.score))
+                score_i = clamp_1to7(float(st.score))
 
                 show_id = int(tid_to_sid.get(int(tid), int(tid))) if mapper is not None else int(tid)
                 draw_label(frame, x1i, y1i, f"ID:{show_id}  score:{score_i}",
@@ -849,4 +851,4 @@ if __name__ == "__main__":
 # python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --mosaic_eyes --data_root realtime
 #
 # tune stable matcher (more strict):
-# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime
+# python scripts/07_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --situation 聞く --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime

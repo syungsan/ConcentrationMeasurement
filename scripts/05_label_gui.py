@@ -12,10 +12,12 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel,
     QSlider, QComboBox, QLineEdit, QMessageBox, QGridLayout, QScrollArea,
     QFrame, QCheckBox, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QSplitter, QSizePolicy, QDialog, QHeaderView, QTabWidget
+    QSplitter, QSizePolicy, QDialog, QHeaderView, QTabWidget, QButtonGroup
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
+
+from lib.situation import SITUATIONS
 
 
 # =========================
@@ -82,19 +84,17 @@ def fmt_time(sec: float) -> str:
 
 
 def score_from_key(key: int):
-    if Qt.Key_1 <= key <= Qt.Key_9:
+    if Qt.Key_1 <= key <= Qt.Key_7:
         return key - Qt.Key_0
-    if key == Qt.Key_0:
-        return 10
     return None
 
 
 def score_color(score: int | None) -> str:
     if score is None:
         return "#f9fafb"
-    if score <= 3:
+    if score <= 2:
         return "#fee2e2"
-    if score <= 7:
+    if score <= 5:
         return "#fef9c3"
     return "#dcfce7"
 
@@ -263,7 +263,7 @@ def _lerp(a: int, b: int, t: float) -> int:
 def heat_color_from_score(avg: Optional[float]) -> QColor:
     if avg is None:
         return QColor(229, 231, 235)
-    t = (float(avg) - 1.0) / 9.0
+    t = (float(avg) - 1.0) / 6.0
     if t < 0.5:
         tt = t / 0.5
         r = _lerp(254, 254, tt)
@@ -463,8 +463,8 @@ class GlobalKeyCatcher(QObject):
             Qt.Key_PageUp, Qt.Key_PageDown,
             Qt.Key_L, Qt.Key_G,
             Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
-            Qt.Key_0, Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4,
-            Qt.Key_5, Qt.Key_6, Qt.Key_7, Qt.Key_8, Qt.Key_9,
+            Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4,
+            Qt.Key_5, Qt.Key_6, Qt.Key_7,
             Qt.Key_Delete, Qt.Key_Backspace,
             Qt.Key_W, Qt.Key_R, Qt.Key_E, Qt.Key_H, Qt.Key_Z,
             Qt.Key_N,
@@ -529,7 +529,7 @@ class SummaryDialog(QDialog):
 
         lay2 = QVBoxLayout()
         lay2.setContentsMargins(6, 6, 6, 6)
-        lay2.addWidget(QLabel("個人別（ID別）平均/件数/分布（1〜10）"))
+        lay2.addWidget(QLabel("個人別（ID別）平均/件数/分布（1〜7）"))
         lay2.addWidget(self.person_table, 1)
         self.tab_person.setLayout(lay2)
 
@@ -588,12 +588,13 @@ class SummaryDialog(QDialog):
         rows = self.cur.execute("""
                                 WITH base AS (
                                     SELECT
-                                        CAST(FLOOR(s.t_start / 60.0) AS INT) AS m,
+                                        CAST(FLOOR(w.t_start / 60.0) AS INT) AS m,
                                         l.score AS score
                                     FROM labels l
                                              JOIN segments s ON s.id = l.segment_id
+                                             JOIN windows w ON w.id = s.window_id
                                              LEFT JOIN window_skips ws
-                                                       ON ws.rater = l.rater AND ws.t_start = s.t_start AND ws.t_end = s.t_end
+                                                       ON ws.rater = l.rater AND ws.window_id = w.id
                                     WHERE l.rater = ? AND ws.id IS NULL
                                 )
                                 SELECT m, COUNT(*), AVG(score)
@@ -656,8 +657,9 @@ class SummaryDialog(QDialog):
                                     SELECT s.track_id AS track_id, l.score AS score
                                     FROM labels l
                                              JOIN segments s ON s.id = l.segment_id
+                                             JOIN windows w ON w.id = s.window_id
                                              LEFT JOIN window_skips ws
-                                                       ON ws.rater = l.rater AND ws.t_start = s.t_start AND ws.t_end = s.t_end
+                                                       ON ws.rater = l.rater AND ws.window_id = w.id
                                     WHERE l.rater=? AND ws.id IS NULL
                                 )
                                 SELECT track_id,
@@ -675,8 +677,9 @@ class SummaryDialog(QDialog):
                                          SELECT s.track_id AS track_id, l.score AS score
                                          FROM labels l
                                                   JOIN segments s ON s.id = l.segment_id
+                                                  JOIN windows w ON w.id = s.window_id
                                                   LEFT JOIN window_skips ws
-                                                            ON ws.rater = l.rater AND ws.t_start = s.t_start AND ws.t_end = s.t_end
+                                                            ON ws.rater = l.rater AND ws.window_id = w.id
                                          WHERE l.rater=? AND ws.id IS NULL
                                      )
                                      SELECT track_id, score, COUNT(*) AS n
@@ -694,7 +697,7 @@ class SummaryDialog(QDialog):
         self.person_table.setSortingEnabled(False)
         self.person_table.clear()
 
-        headers = ["ID", "件数", "平均", "最小", "最大"] + [str(i) for i in range(1, 11)]
+        headers = ["ID", "件数", "平均", "最小", "最大"] + [str(i) for i in range(1, 8)]
         self.person_table.setColumnCount(len(headers))
         self.person_table.setHorizontalHeaderLabels(headers)
         self.person_table.setRowCount(len(rows))
@@ -708,7 +711,7 @@ class SummaryDialog(QDialog):
             _set_item(self.person_table, r, 4, str(int(max_s)) if max_s is not None else "-", align=Qt.AlignCenter)
 
             d = dist.get(tid, {})
-            for i in range(1, 11):
+            for i in range(1, 8):
                 _set_item(self.person_table, r, 4 + i, str(d.get(i, 0)), align=Qt.AlignCenter)
 
         self.person_table.resizeColumnsToContents()
@@ -720,13 +723,13 @@ class SummaryDialog(QDialog):
                                 WITH base AS (
                                     SELECT
                                         s.track_id AS track_id,
-                                        COALESCE(m.situation, '(未設定)') AS situation,
+                                        COALESCE(w.situation, '(未設定)') AS situation,
                                         l.score AS score
                                     FROM labels l
                                              JOIN segments s ON s.id = l.segment_id
-                                             LEFT JOIN label_window_meta m ON m.segment_id = l.segment_id AND m.rater = l.rater
+                                             JOIN windows w ON w.id = s.window_id
                                              LEFT JOIN window_skips ws
-                                                       ON ws.rater = l.rater AND ws.t_start = s.t_start AND ws.t_end = s.t_end
+                                                       ON ws.rater = l.rater AND ws.window_id = w.id
                                     WHERE l.rater = ? AND ws.id IS NULL
                                 )
                                 SELECT situation, track_id, COUNT(*) AS n, AVG(score) AS avg_score
@@ -822,6 +825,8 @@ class LabelFastApp(QWidget):
         self.cfg = cfg
         self.project_root = project_root
         self.dataset_root = dataset_root
+        self.task = str(overrides.get("task", "rating"))
+        self.initial_name = str(overrides.get("name", ""))
 
         # ---- resolve paths (config -> overrides) ----
         db_path = overrides.get("db_path") or cfg["paths"]["db_path"]
@@ -838,12 +843,14 @@ class LabelFastApp(QWidget):
             raise FileNotFoundError(f"proxy video not found: {self.proxy_video}")
 
         self.conn = sqlite3.connect(str(self.db_path))
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self.cur = self.conn.cursor()
         self.ensure_tables()
 
         self.undo_stack: list[dict[str, Any]] = []
 
-        self.setWindowTitle("集中度ラベラー（dataset切替対応）")
+        title = "共有状況設定" if self.task == "situation" else "集中度ラベラー"
+        self.setWindowTitle(f"{title}（dataset切替対応）")
 
         self.current_window: tuple[float, float] | None = None
         self.tiles: list[StudentTile] = []
@@ -915,18 +922,21 @@ class LabelFastApp(QWidget):
         # ---- Right controls ----
         self.rater_edit = QLineEdit()
         self.rater_edit.setPlaceholderText("評価者（例: teacherA）")
-        self.rater_edit.editingFinished.connect(self.refresh_window_table)
-
-        self.situation_box = QComboBox()
-        self.situation_box.setEditable(True)
-        self.situation_box.setInsertPolicy(QComboBox.InsertAtTop)
-        self.situation_box.setPlaceholderText("シチュエーション（編集可）")
+        self.rater_edit.setText(self.initial_name)
+        self.rater_edit.editingFinished.connect(self.on_rater_changed)
 
         self.note_edit = QLineEdit()
         self.note_edit.setPlaceholderText("メモ（任意）")
 
-        self.preset_names = ["板書", "説明", "ワーク", "テスト", "発問", "発表", "配布", "移動"]
-        self.preset_buttons: list[QPushButton] = []
+        self.situation_group = QButtonGroup(self)
+        self.situation_group.setExclusive(True)
+        self.situation_buttons: dict[str, QPushButton] = {}
+        for name in SITUATIONS:
+            button = QPushButton(name)
+            button.setCheckable(True)
+            button.setProperty("compact", True)
+            self.situation_group.addButton(button)
+            self.situation_buttons[name] = button
 
         self.cb_auto_advance = QCheckBox("入力後に次へ")
         self.cb_auto_advance.setChecked(True)
@@ -1030,6 +1040,18 @@ class LabelFastApp(QWidget):
         self.btn_summary.setProperty("primary", True)
         self.btn_summary.clicked.connect(self.open_summary)
 
+        self.btn_apply_situation = QPushButton("現在区間に保存")
+        self.btn_apply_situation.setProperty("primary", True)
+        self.btn_apply_situation.clicked.connect(self.apply_situation_current)
+        self.btn_apply_situation_selected = QPushButton("一覧の選択区間に一括適用")
+        self.btn_apply_situation_selected.clicked.connect(self.apply_situation_selected)
+        self.btn_next_unset_situation = QPushButton("次の未設定")
+        self.btn_next_unset_situation.clicked.connect(self.next_unset_situation)
+        self.btn_lock_situations = QPushButton("全区間の設定完了・ロック")
+        self.btn_lock_situations.clicked.connect(self.lock_all_situations)
+        self.btn_unlock_situations = QPushButton("ロック解除")
+        self.btn_unlock_situations.clicked.connect(self.unlock_all_situations)
+
         self.help = QLabel(
             "【dataset切替】python scripts/05_label_gui.py --dataset datasets/xxx\n"
             "【操作】シークして離す→区間表示→数字キーで集中度\n"
@@ -1099,34 +1121,37 @@ class LabelFastApp(QWidget):
         row_rater = QHBoxLayout()
         row_rater.setContentsMargins(0, 0, 0, 0)
         row_rater.setSpacing(6)
-        row_rater.addWidget(QLabel("評価者"))
+        self.rater_label = QLabel("評価者")
+        row_rater.addWidget(self.rater_label)
         row_rater.addWidget(self.rater_edit, 1)
         top_controls.addLayout(row_rater)
 
         row_sit = QHBoxLayout()
         row_sit.setContentsMargins(0, 0, 0, 0)
         row_sit.setSpacing(6)
-        row_sit.addWidget(QLabel("状況"))
-        row_sit.addWidget(self.situation_box, 1)
+        row_sit.addWidget(QLabel("状況（全評価者で共有）"))
+        for name in SITUATIONS:
+            row_sit.addWidget(self.situation_buttons[name])
+        row_sit.addStretch(1)
         top_controls.addLayout(row_sit)
 
-        preset_row = QHBoxLayout()
-        preset_row.setContentsMargins(0, 0, 0, 0)
-        preset_row.setSpacing(4)
-        preset_row.addWidget(QLabel("プリセット"))
-        for name in self.preset_names:
-            b = QPushButton(name)
-            b.setProperty("compact", True)
-            b.clicked.connect(lambda _=False, n=name: self.set_situation_preset(n))
-            self.preset_buttons.append(b)
-            preset_row.addWidget(b)
-        preset_row.addStretch(1)
-        top_controls.addLayout(preset_row)
+        self.situation_actions = QWidget()
+        situation_actions_lay = QHBoxLayout(self.situation_actions)
+        situation_actions_lay.setContentsMargins(0, 0, 0, 0)
+        situation_actions_lay.setSpacing(6)
+        situation_actions_lay.addWidget(self.btn_apply_situation)
+        situation_actions_lay.addWidget(self.btn_apply_situation_selected)
+        situation_actions_lay.addWidget(self.btn_next_unset_situation)
+        situation_actions_lay.addWidget(self.btn_lock_situations)
+        situation_actions_lay.addWidget(self.btn_unlock_situations)
+        situation_actions_lay.addStretch(1)
+        top_controls.addWidget(self.situation_actions)
 
         row_note = QHBoxLayout()
         row_note.setContentsMargins(0, 0, 0, 0)
         row_note.setSpacing(6)
-        row_note.addWidget(QLabel("メモ"))
+        self.note_label = QLabel("メモ")
+        row_note.addWidget(self.note_label)
         row_note.addWidget(self.note_edit, 1)
         top_controls.addLayout(row_note)
 
@@ -1197,6 +1222,7 @@ class LabelFastApp(QWidget):
         table_box.setLayout(table_lay)
 
         tiles_box = QWidget()
+        self.tiles_box = tiles_box
         tiles_lay = QVBoxLayout()
         tiles_lay.setContentsMargins(0, 0, 0, 0)
         tiles_lay.setSpacing(4)
@@ -1243,11 +1269,27 @@ class LabelFastApp(QWidget):
         QApplication.instance().installEventFilter(self.keycatcher)
         self.keycatcher.keyPressed.connect(self.handle_key)
 
+        self.configure_task_mode()
         self.refresh_windows_cache()
         self.reload_situation_history()
 
     # ---------------- DB ----------------
     def ensure_tables(self):
+        segment_columns = {str(row[1]) for row in self.cur.execute("PRAGMA table_info(segments)")}
+        if "window_id" not in segment_columns:
+            raise RuntimeError(
+                "旧DBスキーマです。scripts/tools/migrate_windows_schema.py --db <DBパス> "
+                "を実行してください。"
+            )
+        window_columns = {str(row[1]) for row in self.cur.execute("PRAGMA table_info(windows)")}
+        additions = {
+            "situation_set_by": "TEXT",
+            "situation_updated_at": "TEXT",
+            "situation_locked": "INTEGER NOT NULL DEFAULT 0 CHECK(situation_locked IN (0, 1))",
+        }
+        for name, definition in additions.items():
+            if name not in window_columns:
+                self.cur.execute(f"ALTER TABLE windows ADD COLUMN {name} {definition}")
         self.cur.execute("""
                          CREATE TABLE IF NOT EXISTS label_events (
                                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1261,25 +1303,14 @@ class LabelFastApp(QWidget):
                              );
                          """)
         self.cur.execute("""
-                         CREATE TABLE IF NOT EXISTS label_window_meta (
-                                                                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                                          created_at TEXT DEFAULT (datetime('now')),
-                             rater TEXT NOT NULL,
-                             segment_id INTEGER NOT NULL,
-                             situation TEXT,
-                             note TEXT,
-                             UNIQUE(rater, segment_id)
-                             );
-                         """)
-        self.cur.execute("""
                          CREATE TABLE IF NOT EXISTS window_skips (
                                                                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                                                     created_at TEXT DEFAULT (datetime('now')),
+                             created_at TEXT DEFAULT (datetime('now')),
                              rater TEXT NOT NULL,
-                             t_start REAL NOT NULL,
-                             t_end REAL NOT NULL,
+                             window_id INTEGER NOT NULL,
                              reason TEXT,
-                             UNIQUE(rater, t_start, t_end)
+                             UNIQUE(rater, window_id),
+                             FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
                              );
                          """)
         self.conn.commit()
@@ -1291,33 +1322,49 @@ class LabelFastApp(QWidget):
         )
         self.conn.commit()
 
-    def upsert_meta_for_segment(self, rater: str, segment_id: int, situation: str | None, note: str | None):
+    def upsert_meta_for_segment(self, rater: str, segment_id: int, note: str | None):
         self.cur.execute(
-            "INSERT OR REPLACE INTO label_window_meta(rater, segment_id, situation, note) VALUES(?,?,?,?)",
-            (rater, int(segment_id), (situation or "").strip() or None, (note or "").strip() or None)
+            "UPDATE labels SET note=?, updated_at=datetime('now') WHERE rater=? AND segment_id=?",
+            ((note or "").strip() or None, rater, int(segment_id))
         )
         self.conn.commit()
 
+    def get_window_id(self, t0: float, t1: float) -> int | None:
+        row = self.cur.execute(
+            "SELECT id FROM windows WHERE t_start=? AND t_end=? ORDER BY id DESC LIMIT 1",
+            (float(t0), float(t1)),
+        ).fetchone()
+        return int(row[0]) if row else None
+
     def is_window_skipped(self, rater: str, t0: float, t1: float) -> bool:
+        window_id = self.get_window_id(t0, t1)
+        if window_id is None:
+            return False
         row = self.cur.execute("""
                                SELECT 1 FROM window_skips
-                               WHERE rater=? AND t_start=? AND t_end=?
+                               WHERE rater=? AND window_id=?
                                    LIMIT 1
-                               """, (rater, float(t0), float(t1))).fetchone()
+                               """, (rater, window_id)).fetchone()
         return row is not None
 
     def skip_window(self, rater: str, t0: float, t1: float, reason: str | None):
+        window_id = self.get_window_id(t0, t1)
+        if window_id is None:
+            return
         self.cur.execute("""
-            INSERT OR REPLACE INTO window_skips(rater, t_start, t_end, reason)
-            VALUES(?,?,?,?)
-        """, (rater, float(t0), float(t1), (reason or "").strip() or None))
+            INSERT OR REPLACE INTO window_skips(rater, window_id, reason)
+            VALUES(?,?,?)
+        """, (rater, window_id, (reason or "").strip() or None))
         self.conn.commit()
 
     def unskip_window_db(self, rater: str, t0: float, t1: float):
+        window_id = self.get_window_id(t0, t1)
+        if window_id is None:
+            return
         self.cur.execute("""
                          DELETE FROM window_skips
-                         WHERE rater=? AND t_start=? AND t_end=?
-                         """, (rater, float(t0), float(t1)))
+                         WHERE rater=? AND window_id=?
+                         """, (rater, window_id))
         self.conn.commit()
 
     # ---------------- helpers ----------------
@@ -1325,39 +1372,175 @@ class LabelFastApp(QWidget):
         r = self.rater_edit.text().strip()
         return r if r else None
 
+    def on_rater_changed(self):
+        self.refresh_window_table()
+        rater = self.rater()
+        if rater and self.current_window:
+            self.load_window(*self.current_window, rater, keep_play_state=False)
+        else:
+            self.refresh_info()
+
+    def configure_task_mode(self):
+        is_setup = self.task == "situation"
+        self.rater_label.setText("代表者" if is_setup else "評価者")
+        self.rater_edit.setPlaceholderText(
+            "状況設定の担当者名" if is_setup else "評価者（例: teacherA）"
+        )
+        self.situation_actions.setVisible(is_setup)
+        for button in self.situation_buttons.values():
+            button.setEnabled(is_setup)
+        self.note_label.setVisible(not is_setup)
+        self.note_edit.setVisible(not is_setup)
+        self.tiles_box.setVisible(not is_setup)
+
+        rating_widgets = [
+            self.cb_auto_advance, self.cb_prioritize_current_situation,
+            self.cb_only_unlabeled, self.cb_hide_skipped, self.cb_debug_thumb,
+            self.btn_next_unlabeled, self.btn_skip_window, self.btn_unskip_window,
+            self.btn_summary, self.btn_del_one, self.btn_del_window,
+            self.btn_del_rater, self.btn_undo, self.btn_export, self.btn_history,
+        ]
+        for widget in rating_widgets:
+            widget.setVisible(not is_setup)
+
+        if is_setup:
+            self.win_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.right_vsplit.setSizes([1000, 0])
+
+    def window_situation_state(self, t0: float, t1: float):
+        return self.cur.execute("""
+            SELECT id, situation, situation_set_by, situation_updated_at, situation_locked
+            FROM windows WHERE t_start=? AND t_end=? ORDER BY id DESC LIMIT 1
+        """, (float(t0), float(t1))).fetchone()
+
+    def _apply_situation_to_indices(self, indices: list[int]):
+        representative = self.rater()
+        situation = self.situation()
+        if not representative:
+            QMessageBox.information(self, "代表者", "状況設定の担当者名を入力してください。")
+            return
+        if situation is None:
+            QMessageBox.information(self, "状況", "「聞く」「書く」「話し合う」のいずれかを選択してください。")
+            return
+
+        window_ids: list[int] = []
+        locked = 0
+        for index in sorted(set(indices)):
+            if not (0 <= index < len(self.windows)):
+                continue
+            state = self.window_situation_state(*self.windows[index])
+            if not state:
+                continue
+            if int(state[4]):
+                locked += 1
+            else:
+                window_ids.append(int(state[0]))
+        if not window_ids:
+            QMessageBox.information(self, "保存", "更新できる未ロック区間がありません。")
+            return
+
+        with self.conn:
+            self.conn.executemany("""
+                UPDATE windows
+                SET situation=?, situation_set_by=?, situation_updated_at=datetime('now')
+                WHERE id=? AND situation_locked=0
+            """, [(situation, representative, window_id) for window_id in window_ids])
+        self.refresh_window_table()
+        if self.current_window:
+            self.load_window(*self.current_window, representative, keep_play_state=False)
+        message = f"{len(window_ids)}区間に「{situation}」を保存しました。"
+        if locked:
+            message += f"\nロック済み {locked}区間は変更していません。"
+        self.status.setText(f"状態: {message}")
+
+    def apply_situation_current(self):
+        if self.window_idx < 0:
+            return
+        self._apply_situation_to_indices([self.window_idx])
+
+    def apply_situation_selected(self):
+        indices: list[int] = []
+        for model_index in self.win_table.selectionModel().selectedRows():
+            item = self.win_table.item(model_index.row(), 0)
+            if item is not None and item.data(Qt.UserRole) is not None:
+                indices.append(int(item.data(Qt.UserRole)))
+        if not indices:
+            QMessageBox.information(self, "一括適用", "区間一覧で適用先の行を選択してください。")
+            return
+        self._apply_situation_to_indices(indices)
+
+    def next_unset_situation(self):
+        if not self.windows:
+            return
+        order = list(range(self.window_idx + 1, len(self.windows))) + list(range(0, self.window_idx + 1))
+        for index in order:
+            state = self.window_situation_state(*self.windows[index])
+            if state and (state[1] is None or state[2] is None):
+                self.window_idx = index
+                self.load_window(*self.windows[index], self.rater() or "", keep_play_state=True)
+                return
+        QMessageBox.information(self, "設定完了", "状況が未設定の区間はありません。")
+
+    def lock_all_situations(self):
+        representative = self.rater()
+        if not representative:
+            QMessageBox.information(self, "代表者", "状況設定の担当者名を入力してください。")
+            return
+        unset = int(self.cur.execute(
+            "SELECT COUNT(*) FROM windows WHERE situation IS NULL OR situation_set_by IS NULL"
+        ).fetchone()[0])
+        if unset:
+            QMessageBox.information(self, "未設定・未確認あり", f"状況が未設定または代表者未確認の区間が {unset}件あります。")
+            return
+        ret = QMessageBox.question(
+            self, "ロック確認",
+            "全区間の共有状況を確定し、評価中の変更を防止しますか？",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if ret != QMessageBox.Yes:
+            return
+        with self.conn:
+            self.conn.execute("UPDATE windows SET situation_locked=1")
+        self.refresh_window_table()
+        self.refresh_info()
+
+    def unlock_all_situations(self):
+        if not self.rater():
+            QMessageBox.information(self, "代表者", "状況設定の担当者名を入力してください。")
+            return
+        ret = QMessageBox.question(
+            self, "ロック解除",
+            "評価中の状況変更は学習データの整合性に影響します。ロックを解除しますか？",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if ret != QMessageBox.Yes:
+            return
+        with self.conn:
+            self.conn.execute("UPDATE windows SET situation_locked=0")
+        self.refresh_window_table()
+        self.refresh_info()
+
     def situation(self) -> str | None:
-        s = self.situation_box.currentText().strip()
-        return s if s else None
+        button = self.situation_group.checkedButton()
+        return button.text() if button is not None else None
 
     def note(self) -> str | None:
         n = self.note_edit.text().strip()
         return n if n else None
 
     def set_situation_preset(self, name: str):
-        self.situation_box.setCurrentText(name)
+        button = self.situation_buttons.get(name)
+        if button is not None:
+            button.setChecked(True)
+
+    def clear_situation(self):
+        self.situation_group.setExclusive(False)
+        for button in self.situation_buttons.values():
+            button.setChecked(False)
+        self.situation_group.setExclusive(True)
 
     def reload_situation_history(self):
-        try:
-            rows = self.cur.execute("""
-                                    SELECT situation, COUNT(*) AS n
-                                    FROM label_window_meta
-                                    WHERE situation IS NOT NULL AND situation <> ''
-                                    GROUP BY situation
-                                    ORDER BY n DESC
-                                        LIMIT 60
-                                    """).fetchall()
-        except Exception:
-            rows = []
-
-        cur_txt = self.situation_box.currentText().strip()
-        self.situation_box.blockSignals(True)
-        self.situation_box.clear()
-        self.situation_box.addItem("")
-        for s, _n in rows:
-            self.situation_box.addItem(str(s))
-        if cur_txt:
-            self.situation_box.setCurrentText(cur_txt)
-        self.situation_box.blockSignals(False)
+        pass
 
     def update_cols_by_viewport(self):
         vp_w = self.scroll.viewport().width()
@@ -1425,7 +1608,7 @@ class LabelFastApp(QWidget):
 
     # ---------------- window ops ----------------
     def ensure_ready(self) -> bool:
-        if not self.rater():
+        if self.task == "rating" and not self.rater():
             QMessageBox.information(self, "評価者", "評価者名を入力してください。")
             return False
         if not self.windows:
@@ -1435,41 +1618,55 @@ class LabelFastApp(QWidget):
 
     def refresh_windows_cache(self):
         self.windows = [(float(a), float(b)) for (a, b) in self.cur.execute("""
-                                                                            SELECT t_start, t_end
-                                                                            FROM segments
-                                                                            GROUP BY t_start, t_end
-                                                                            ORDER BY t_start
+                                                                             SELECT t_start, t_end
+                                                                             FROM windows
+                                                                             ORDER BY t_start
                                                                             """).fetchall()]
 
         if self.windows and self.window_idx < 0:
             self.window_idx = 0
         self.refresh_window_table()
 
-        if self.rater() and self.windows:
+        if (self.task == "situation" or self.rater()) and self.windows:
             t0, t1 = self.windows[self.window_idx]
-            self.load_window(t0, t1, self.rater(), keep_play_state=False)
+            self.load_window(t0, t1, self.rater() or "", keep_play_state=False)
 
     def count_unlabeled_windows(self, rater: str) -> int:
         row = self.cur.execute("""
-                               WITH seg AS (
-                                   SELECT s.t_start, s.t_end, s.id AS segment_id
-                                   FROM segments s
-                               ),
-                                    unl AS (
-                                        SELECT seg.t_start, seg.t_end
-                                        FROM seg
-                                                 LEFT JOIN labels l ON l.segment_id = seg.segment_id AND l.rater = ?
-                                                 LEFT JOIN window_skips ws ON ws.rater=? AND ws.t_start=seg.t_start AND ws.t_end=seg.t_end
-                                        WHERE l.id IS NULL AND ws.id IS NULL
-                                        GROUP BY seg.t_start, seg.t_end
-                                    )
-                               SELECT COUNT(*) FROM unl
+                               SELECT COUNT(*)
+                               FROM windows w
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM window_skips ws
+                                   WHERE ws.rater=? AND ws.window_id=w.id
+                               ) AND EXISTS (
+                                   SELECT 1 FROM segments s
+                                   LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
+                                   WHERE s.window_id=w.id AND l.id IS NULL
+                               )
                                """, (rater, rater)).fetchone()
         return int(row[0]) if row else 0
 
     def refresh_info(self):
         if not self.current_window:
             self.info.setText("ウィンドウ: -")
+            return
+
+        if self.task == "situation":
+            t_start, t_end = self.current_window
+            state = self.window_situation_state(t_start, t_end)
+            situation = str(state[1]) if state and state[1] else "未設定"
+            setter = str(state[2]) if state and state[2] else "-"
+            locked = bool(state and state[4])
+            unset = int(self.cur.execute(
+                "SELECT COUNT(*) FROM windows WHERE situation IS NULL OR situation_set_by IS NULL"
+            ).fetchone()[0])
+            total = int(self.cur.execute("SELECT COUNT(*) FROM windows").fetchone()[0])
+            self.info.setText(
+                f"ウィンドウ: {t_start:.2f}-{t_end:.2f}s / 状況={situation} / 設定者={setter}"
+            )
+            self.status.setText(
+                f"状態: 未設定・未確認={unset}/{total} / " + ("ロック済み" if locked else "編集可能")
+            )
             return
 
         r = self.rater()
@@ -1485,11 +1682,19 @@ class LabelFastApp(QWidget):
         if r:
             remaining = self.count_unlabeled_windows(r)
             sit = self.situation() or "-"
-            self.status.setText(f"状態: dataset='{self.dataset_root.name}' / rater='{r}' / 状況='{sit}' / 未完了区間={remaining}")
+            state = self.window_situation_state(t_start, t_end)
+            situation_state = "確定済み" if state and int(state[4]) else "未確定"
+            self.status.setText(
+                f"状態: dataset='{self.dataset_root.name}' / rater='{r}' / "
+                f"状況='{sit}'({situation_state}) / 未完了区間={remaining}"
+            )
         else:
             self.status.setText("状態: 評価者を入力してください")
 
     def refresh_window_table(self):
+        if self.task == "situation":
+            self.refresh_situation_table()
+            return
         r = self.rater()
         only_unlabeled = self.cb_only_unlabeled.isChecked()
         hide_skipped = self.cb_hide_skipped.isChecked()
@@ -1506,30 +1711,21 @@ class LabelFastApp(QWidget):
         skipset: set[tuple[float, float]] = set()
 
         if r:
-            skip_rows = self.cur.execute("SELECT t_start, t_end FROM window_skips WHERE rater=?", (r,)).fetchall()
+            skip_rows = self.cur.execute("""
+                SELECT w.t_start, w.t_end
+                FROM window_skips ws JOIN windows w ON w.id=ws.window_id
+                WHERE ws.rater=?
+            """, (r,)).fetchall()
             skipset = {(float(a), float(b)) for a, b in skip_rows}
 
             rows = self.cur.execute("""
-                                    WITH win AS (
-                                        SELECT t_start, t_end, COUNT(*) AS total
-                                        FROM segments
-                                        GROUP BY t_start, t_end
-                                    ),
-                                         lab AS (
-                                             SELECT s.t_start, s.t_end,
-                                                    COUNT(l.id) AS labeled,
-                                                    AVG(l.score) AS avg_score,
-                                                    MIN(l.score) AS min_score,
-                                                    MAX(l.score) AS max_score
-                                             FROM segments s
-                                                      LEFT JOIN labels l ON l.segment_id = s.id AND l.rater = ?
-                                             GROUP BY s.t_start, s.t_end
-                                         )
-                                    SELECT win.t_start, win.t_end, win.total,
-                                           lab.labeled, lab.avg_score, lab.min_score, lab.max_score
-                                    FROM win
-                                             JOIN lab ON lab.t_start = win.t_start AND lab.t_end = win.t_end
-                                    ORDER BY win.t_start
+                                    SELECT w.t_start, w.t_end, COUNT(s.id) AS total,
+                                           COUNT(l.id) AS labeled, AVG(l.score), MIN(l.score), MAX(l.score)
+                                    FROM windows w
+                                    JOIN segments s ON s.window_id=w.id
+                                    LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
+                                    GROUP BY w.id
+                                    ORDER BY w.t_start
                                     """, (r,)).fetchall()
 
             for t0, t1, total, labeled, avg_s, min_s, max_s in rows:
@@ -1543,9 +1739,9 @@ class LabelFastApp(QWidget):
         else:
             rows = self.cur.execute("""
                                     SELECT t_start, t_end, COUNT(*) AS total
-                                    FROM segments
-                                    GROUP BY t_start, t_end
-                                    ORDER BY t_start
+                                    FROM windows w JOIN segments s ON s.window_id=w.id
+                                    GROUP BY w.id
+                                    ORDER BY w.t_start
                                     """).fetchall()
             for t0, t1, total in rows:
                 stats[(float(t0), float(t1))] = {"total": int(total), "labeled": None, "avg": None, "min": None, "max": None}
@@ -1601,6 +1797,38 @@ class LabelFastApp(QWidget):
         self.win_table.resizeColumnsToContents()
         self.win_table.setSortingEnabled(True)
 
+    def refresh_situation_table(self):
+        rows = self.cur.execute("""
+            SELECT id, t_start, t_end, situation, situation_set_by,
+                   situation_updated_at, situation_locked
+            FROM windows ORDER BY t_start
+        """).fetchall()
+        self.win_table.setSortingEnabled(False)
+        self.win_table.clear()
+        self.win_table.setColumnCount(4)
+        self.win_table.setHorizontalHeaderLabels(["#", "区間", "共有状況", "設定者 / 状態"])
+        self.win_table.setRowCount(len(rows))
+        index_by_window = {window: i for i, window in enumerate(self.windows)}
+        for row_index, (_window_id, t0, t1, situation, setter, updated_at, locked) in enumerate(rows):
+            key = (float(t0), float(t1))
+            window_index = index_by_window.get(key, row_index)
+            item0 = QTableWidgetItem(str(window_index + 1))
+            item0.setData(Qt.UserRole, window_index)
+            self.win_table.setItem(row_index, 0, item0)
+            self.win_table.setItem(row_index, 1, QTableWidgetItem(f"{float(t0):.2f}-{float(t1):.2f}"))
+            situation_text = str(situation) if situation else "未設定"
+            if situation and not setter:
+                situation_text += "（代表者未確認）"
+            self.win_table.setItem(row_index, 2, QTableWidgetItem(situation_text))
+            state = "ロック" if int(locked) else "編集可"
+            detail = f"{setter or '-'} / {state}"
+            if updated_at:
+                detail += f" / {updated_at}"
+            self.win_table.setItem(row_index, 3, QTableWidgetItem(detail))
+        self.win_table.resizeColumnsToContents()
+        self.win_table.horizontalHeader().setStretchLastSection(True)
+        self.win_table.setSortingEnabled(True)
+
     def on_window_table_clicked(self, row: int, col: int):
         it = self.win_table.item(row, 0)
         if not it:
@@ -1632,8 +1860,9 @@ class LabelFastApp(QWidget):
         row = self.cur.execute("""
                                SELECT 1
                                FROM segments s
-                                        LEFT JOIN labels l ON l.segment_id = s.id AND l.rater = ?
-                               WHERE s.t_start=? AND s.t_end=? AND l.id IS NULL
+                               JOIN windows w ON w.id=s.window_id
+                                         LEFT JOIN labels l ON l.segment_id = s.id AND l.rater = ?
+                               WHERE w.t_start=? AND w.t_end=? AND l.id IS NULL
                                    LIMIT 1
                                """, (rater, float(t0), float(t1))).fetchone()
         return row is not None
@@ -1641,11 +1870,10 @@ class LabelFastApp(QWidget):
     def _window_matches_situation(self, rater: str, t0: float, t1: float, situation: str) -> bool:
         row = self.cur.execute("""
                                SELECT 1
-                               FROM segments s
-                                        JOIN label_window_meta m ON m.segment_id = s.id AND m.rater = ?
-                               WHERE s.t_start=? AND s.t_end=? AND COALESCE(m.situation,'') = ?
-                                   LIMIT 1
-                               """, (rater, float(t0), float(t1), situation)).fetchone()
+                               FROM windows w
+                               WHERE w.t_start=? AND w.t_end=? AND COALESCE(w.situation,'') = ?
+                                    LIMIT 1
+                               """, (float(t0), float(t1), situation)).fetchone()
         return row is not None
 
     def find_next_window_index(self, rater: str, start_idx: int, prefer_situation: bool) -> Optional[int]:
@@ -1741,11 +1969,10 @@ class LabelFastApp(QWidget):
         r = self.rater()
         t = self.player.position() / 1000.0
         row = self.cur.execute("""
-                               SELECT s.t_start, s.t_end
-                               FROM segments s
-                               WHERE s.t_start <= ? AND s.t_end > ?
-                               GROUP BY s.t_start, s.t_end
-                               ORDER BY s.t_start DESC
+                               SELECT w.t_start, w.t_end
+                               FROM windows w
+                               WHERE w.t_start <= ? AND w.t_end > ?
+                               ORDER BY w.t_start DESC
                                    LIMIT 1
                                """, (float(t), float(t))).fetchone()
         if row is None:
@@ -1788,28 +2015,45 @@ class LabelFastApp(QWidget):
         self.current_window = (t_start, t_end)
         mid = (t_start + t_end) / 2.0
 
+        if self.task == "situation":
+            self.clear_tiles()
+            self.clear_situation()
+            state = self.window_situation_state(t_start, t_end)
+            if state and state[1]:
+                self.set_situation_preset(str(state[1]))
+            self.player.setPosition(int(t_start * 1000))
+            if was_playing:
+                self.player.play()
+            self.refresh_info()
+            return
+
         seg_rows = self.cur.execute("""
                                     SELECT s.id, s.track_id
                                     FROM segments s
-                                    WHERE s.t_start=? AND s.t_end=?
+                                    JOIN windows w ON w.id=s.window_id
+                                    WHERE w.t_start=? AND w.t_end=?
                                     ORDER BY s.track_id
                                     """, (float(t_start), float(t_end))).fetchall()
 
         self.clear_tiles()
         self.update_cols_by_viewport()
 
+        self.clear_situation()
+        self.note_edit.clear()
         if seg_rows:
             first_seg = int(seg_rows[0][0])
             meta = self.cur.execute("""
-                                    SELECT situation, note
-                                    FROM label_window_meta
-                                    WHERE rater=? AND segment_id=?
+                                    SELECT w.situation, l.note
+                                    FROM segments s
+                                    JOIN windows w ON w.id=s.window_id
+                                    LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
+                                    WHERE s.id=?
                                         LIMIT 1
                                     """, (rater, first_seg)).fetchone()
             if meta:
                 sit, note = meta
                 if sit:
-                    self.situation_box.setCurrentText(str(sit))
+                    self.set_situation_preset(str(sit))
                 if note:
                     self.note_edit.setText(str(note))
 
@@ -1957,6 +2201,8 @@ class LabelFastApp(QWidget):
         return int(row[0]) if row else None
 
     def save_score(self, score: int):
+        if not 1 <= score <= 7:
+            return
         r = self.rater()
         if not r:
             QMessageBox.information(self, "評価者", "評価者名を入力してください。")
@@ -1971,16 +2217,29 @@ class LabelFastApp(QWidget):
         seg_id = int(tile.seg_id)
         old_score = self.get_existing_score(seg_id, r)
 
-        sit = self.situation()
+        state = self.window_situation_state(*self.current_window) if self.current_window else None
+        sit = str(state[1]) if state and state[1] else None
+        if sit is None:
+            QMessageBox.information(self, "共有状況未設定", "代表者がこの区間の共有状況を設定するまで評価できません。")
+            return
+        if not bool(state[4]):
+            QMessageBox.information(self, "共有状況未確定", "代表者が全区間の状況設定を完了し、ロックするまで評価できません。")
+            return
         note = self.note()
 
         self.push_undo("upsert", {"segment_id": seg_id, "old_score": old_score, "new_score": score})
 
         tile.set_score(score)
-        self.cur.execute("INSERT OR REPLACE INTO labels(segment_id, rater, score) VALUES(?,?,?)", (seg_id, r, int(score)))
+        self.cur.execute("""
+            INSERT INTO labels(segment_id, rater, score, note)
+            VALUES(?,?,?,?)
+            ON CONFLICT(segment_id, rater) DO UPDATE SET
+                score=excluded.score,
+                note=excluded.note,
+                updated_at=datetime('now')
+        """, (seg_id, r, int(score), (note or "").strip() or None))
         self.conn.commit()
 
-        self.upsert_meta_for_segment(r, seg_id, sit, note)
         self.reload_situation_history()
         self.log_event(r, "upsert", seg_id, old_score, score, note=f"situation={sit}")
 
@@ -2066,22 +2325,23 @@ class LabelFastApp(QWidget):
 
         ret = QMessageBox.question(
             self, "確認",
-            f"評価者='{r}' の全ラベルを削除しますか？（やり直し）",
+            f"評価者='{r}' のラベル・メモ・スキップ・操作履歴を全削除しますか？\n"
+            "この操作は取り消せません。\n"
+            "授業ウィンドウの共有状況は、他の評価者も使うため残ります。",
             QMessageBox.Yes | QMessageBox.No
         )
         if ret != QMessageBox.Yes:
             return
 
-        rows = self.cur.execute("SELECT segment_id, score FROM labels WHERE rater=?", (r,)).fetchall()
-        rows = [(int(a), int(b)) for (a, b) in rows]
-        self.push_undo("delete_rater", {"rows": rows})
-
-        self.cur.execute("DELETE FROM labels WHERE rater=?", (r,))
-        self.conn.commit()
-        self.log_event(r, "bulk_delete", None, None, None, note=f"delete_rater rows={len(rows)}")
+        with self.conn:
+            self.cur.execute("DELETE FROM labels WHERE rater=?", (r,))
+            self.cur.execute("DELETE FROM window_skips WHERE rater=?", (r,))
+            self.cur.execute("DELETE FROM label_events WHERE rater=?", (r,))
+        self.undo_stack.clear()
 
         self.reload_current_window()
         self.refresh_window_table()
+        QMessageBox.information(self, "削除完了", f"評価者='{r}' の個人データを全削除しました。")
 
     def undo(self):
         if not self.undo_stack:
@@ -2155,15 +2415,15 @@ class LabelFastApp(QWidget):
 
         rows = self.cur.execute("""
                                 SELECT l.segment_id, l.score, l.created_at,
-                                       s.track_id, s.t_start, s.t_end,
-                                       COALESCE(m.situation, ''), COALESCE(m.note, ''),
+                                       s.track_id, w.t_start, w.t_end,
+                                       COALESCE(w.situation, ''), COALESCE(l.note, ''),
                                        CASE WHEN ws.id IS NULL THEN 0 ELSE 1 END AS skipped
                                 FROM labels l
                                          JOIN segments s ON s.id = l.segment_id
-                                         LEFT JOIN label_window_meta m ON m.segment_id = l.segment_id AND m.rater = l.rater
-                                         LEFT JOIN window_skips ws ON ws.rater = l.rater AND ws.t_start = s.t_start AND ws.t_end = s.t_end
+                                         JOIN windows w ON w.id=s.window_id
+                                         LEFT JOIN window_skips ws ON ws.rater = l.rater AND ws.window_id=w.id
                                 WHERE l.rater = ?
-                                ORDER BY s.t_start, s.track_id
+                                ORDER BY w.t_start, s.track_id
                                 """, (r,)).fetchall()
 
         export_dir = self.db_path.parent / "exports"
@@ -2216,7 +2476,8 @@ class LabelFastApp(QWidget):
 
         ctrl_mask = flag_to_int(Qt.ControlModifier)
         if key == Qt.Key_Z and (modifiers_int & ctrl_mask):
-            self.undo()
+            if self.task == "rating":
+                self.undo()
             return
 
         if key == Qt.Key_Space:
@@ -2230,13 +2491,19 @@ class LabelFastApp(QWidget):
             self.next_window_all()
             return
         if key == Qt.Key_N:
-            self.next_window_unlabeled()
+            if self.task == "situation":
+                self.next_unset_situation()
+            else:
+                self.next_window_unlabeled()
             return
         if key == Qt.Key_L:
             self.load_window_from_current_time()
             return
         if key == Qt.Key_G:
             self.goto_start()
+            return
+
+        if self.task == "situation":
             return
 
         if key == Qt.Key_Left:
@@ -2329,12 +2596,17 @@ def main():
     ap.add_argument("--db", type=str, default=None, help="DBパスを直接指定（--dataset より優先）")
     ap.add_argument("--video", type=str, default=None, help="proxy.mp4 を直接指定（--dataset より優先）")
     ap.add_argument("--crop_dir", type=str, default=None, help="crop_dir を上書き（例: data/assets/crops）")
+    ap.add_argument("--task", choices=["situation", "rating"], default="rating",
+                    help="situation=代表者の共有状況設定 / rating=集中度評価")
+    ap.add_argument("--name", default="", help="代表者名または評価者名の初期値")
     args = ap.parse_args()
 
     # dataset_root を決定（未指定なら project_root を基準に旧運用）
     dataset_root = (project_root / args.dataset).resolve() if args.dataset else project_root
 
     overrides = {}
+    overrides["task"] = args.task
+    overrides["name"] = args.name
     if args.dataset:
         overrides.update(guess_paths_from_dataset_dir(dataset_root))
 
@@ -2359,7 +2631,8 @@ if __name__ == "__main__":
 
 # command
 # 授業ごとのフォルダを指定
-# python scripts/05_label_gui.py --dataset datasets/lesson_001
+# python scripts/05_label_gui.py --dataset datasets/lesson_001 --task situation
+# python scripts/05_label_gui.py --dataset datasets/lesson_001 --task rating
 
 # DB/動画を明示（フォルダ構造がバラバラでもOK）
 # python scripts/05_label_gui.py --dataset datasets/lesson_001 --db db/dataset.sqlite --video videos/proxy.mp4

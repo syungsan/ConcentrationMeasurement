@@ -1,3 +1,6 @@
+import time
+SCRIPT_STARTED_AT = time.perf_counter()
+
 from pathlib import Path
 import json
 import math
@@ -80,9 +83,10 @@ def main():
         raise RuntimeError(f"Cannot open: {raw_video}")
 
     segs = cur.execute("""
-                       SELECT s.id, s.track_id, s.t_start, s.t_end
+                       SELECT s.id, s.track_id, w.t_start, w.t_end
                        FROM segments s
-                       WHERE s.video_id=?
+                       JOIN windows w ON w.id=s.window_id
+                       WHERE w.video_id=?
                        ORDER BY s.id
                        """, (video_id,)).fetchall()
 
@@ -173,13 +177,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-    import winsound
     try:
-        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-    except Exception as e:
-        print(f"[WARN] 音声を再生できませんでした: {e}")
+        main()
+        import winsound
+        try:
+            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[WARN] 音声を再生できませんでした: {e}")
+    finally:
+        elapsed = time.perf_counter() - SCRIPT_STARTED_AT
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
 # command
 # python scripts/04_extract_frames_assets.py --data_root datasets/lesson_001

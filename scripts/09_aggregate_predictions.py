@@ -1,6 +1,9 @@
 # scripts/09_aggregate_predictions.py
 from __future__ import annotations
 
+import time
+SCRIPT_STARTED_AT = time.perf_counter()
+
 import argparse
 import sqlite3
 from pathlib import Path
@@ -23,7 +26,7 @@ def parse_args():
 def load_df(db_path: Path, video_filter: str | None) -> pd.DataFrame:
     conn = sqlite3.connect(str(db_path))
     q = """
-        SELECT video_path, frame_idx, t, track_id, score, score_clamped, det_conf, x1, y1, x2, y2
+        SELECT video_path, frame_idx, t, track_id, situation, score, score_clamped, det_conf, x1, y1, x2, y2
         FROM predictions \
         """
     df = pd.read_sql_query(q, conn)
@@ -76,11 +79,11 @@ def overall_stats(df: pd.DataFrame) -> pd.DataFrame:
 def by_track(df: pd.DataFrame, min_samples: int) -> pd.DataFrame:
     if len(df) == 0:
         return pd.DataFrame(columns=[
-            "track_id", "n", "t_min", "t_max",
+            "situation", "track_id", "n", "t_min", "t_max",
             "score_mean", "score_std", "score_p50", "clamped_mean"
         ])
 
-    g = df.groupby("track_id", as_index=False).agg(
+    g = df.groupby(["situation", "track_id"], as_index=False).agg(
         n=("score", "size"),
         t_min=("t", "min"),
         t_max=("t", "max"),
@@ -97,18 +100,18 @@ def by_track(df: pd.DataFrame, min_samples: int) -> pd.DataFrame:
 
 def timeseries_per_sec(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) == 0:
-        return pd.DataFrame(columns=["sec", "n_tracks", "score_mean", "score_p50", "clamped_mean"])
+        return pd.DataFrame(columns=["situation", "sec", "n_tracks", "score_mean", "score_p50", "clamped_mean"])
 
     df2 = df.copy()
     df2["sec"] = np.floor(df2["t"]).astype(int)
 
     # 同じ sec の同じ track が複数行あるので、まず track内で sec ごとに平均→その後クラス平均
-    per_track_sec = df2.groupby(["sec", "track_id"], as_index=False).agg(
+    per_track_sec = df2.groupby(["situation", "sec", "track_id"], as_index=False).agg(
         score=("score", "mean"),
         clamped=("score_clamped", "mean"),
     )
 
-    ts = per_track_sec.groupby("sec", as_index=False).agg(
+    ts = per_track_sec.groupby(["situation", "sec"], as_index=False).agg(
         n_tracks=("track_id", "nunique"),
         score_mean=("score", "mean"),
         score_p50=("score", "median"),
@@ -119,20 +122,20 @@ def timeseries_per_sec(df: pd.DataFrame) -> pd.DataFrame:
 
 def timeseries_binned(df: pd.DataFrame, bin_sec: float) -> pd.DataFrame:
     if len(df) == 0:
-        return pd.DataFrame(columns=["bin_start", "bin_end", "n_tracks", "score_mean", "score_p50", "clamped_mean"])
+        return pd.DataFrame(columns=["situation", "bin_start", "bin_end", "n_tracks", "score_mean", "score_p50", "clamped_mean"])
 
     df2 = df.copy()
     b = float(bin_sec)
     df2["bin"] = np.floor(df2["t"] / b).astype(int)
 
-    per_track_bin = df2.groupby(["bin", "track_id"], as_index=False).agg(
+    per_track_bin = df2.groupby(["situation", "bin", "track_id"], as_index=False).agg(
         score=("score", "mean"),
         clamped=("score_clamped", "mean"),
         t_min=("t", "min"),
         t_max=("t", "max"),
     )
 
-    ts = per_track_bin.groupby("bin", as_index=False).agg(
+    ts = per_track_bin.groupby(["situation", "bin"], as_index=False).agg(
         n_tracks=("track_id", "nunique"),
         score_mean=("score", "mean"),
         score_p50=("score", "median"),
@@ -140,8 +143,8 @@ def timeseries_binned(df: pd.DataFrame, bin_sec: float) -> pd.DataFrame:
     )
     ts["bin_start"] = ts["bin"] * b
     ts["bin_end"] = (ts["bin"] + 1) * b
-    ts = ts[["bin_start", "bin_end", "n_tracks", "score_mean", "score_p50", "clamped_mean"]]
-    return ts.sort_values("bin_start").reset_index(drop=True)
+    ts = ts[["situation", "bin_start", "bin_end", "n_tracks", "score_mean", "score_p50", "clamped_mean"]]
+    return ts.sort_values(["situation", "bin_start"]).reset_index(drop=True)
 
 
 def main():
@@ -182,13 +185,18 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-    import winsound
     try:
-        winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-    except Exception as e:
-        print(f"[WARN] 音声を再生できませんでした: {e}")
+        main()
+        import winsound
+        try:
+            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
+        except Exception as e:
+            print(f"[WARN] 音声を再生できませんでした: {e}")
+    finally:
+        elapsed = time.perf_counter() - SCRIPT_STARTED_AT
+        hours, remainder = divmod(elapsed, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
 # command
 # python scripts/09_aggregate_predictions.py --db outputs/pred_log.sqlite --out_dir outputs --bin_sec 5
