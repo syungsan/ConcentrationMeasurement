@@ -3,16 +3,15 @@ from __future__ import annotations
 import subprocess
 import threading
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 
 
 ROOT = Path(__file__).resolve().parent
 PYTHON_EXE = ROOT / "WPy64-312101" / "python" / "python.exe"
-LABEL_GUI = ROOT / "scripts" / "05_label_gui.py"
+LABEL_GUI = ROOT / "scripts" / "06_label_gui.py"
 MERGE_SCRIPT = ROOT / "scripts" / "tools" / "merge_rater_databases.py"
 PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_package.py"
 DATASETS_DIR = ROOT / "datasets"
@@ -213,6 +212,15 @@ class Launcher(tk.Tk):
             label = "代表者名" if self.mode.get() == "administrator" else "評価者名"
             messagebox.showinfo(label, f"{label}を入力してください。")
             return
+        if self.evaluator_only and not str(
+            self.package_config.get("evaluator_name", "")
+        ).strip():
+            self.package_config["evaluator_name"] = person_name
+            PACKAGE_CONFIG_PATH.write_text(
+                json.dumps(self.package_config, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            self.name_entry.configure(state="readonly")
 
         task = "situation" if self.mode.get() == "administrator" else "rating"
         dataset_arg = entry.root.relative_to(ROOT).as_posix()
@@ -222,6 +230,10 @@ class Launcher(tk.Tk):
             "--task", task,
             "--name", person_name,
         ]
+        if task == "rating":
+            command.extend(["--rating-clip-sec", "15"])
+        if self.evaluator_only:
+            command.append("--blind-order")
         try:
             subprocess.Popen(command, cwd=str(ROOT))
         except OSError as exc:
@@ -284,14 +296,10 @@ class Launcher(tk.Tk):
         if not_ready:
             messagebox.showerror("準備未完了", "次のdatasetはDBまたは動画が不足しています:\n" + "\n".join(not_ready))
             return
-        evaluator_name = simpledialog.askstring("評価者", "配布先の評価者名を入力してください:", parent=self)
-        if not evaluator_name or not evaluator_name.strip():
-            return
         parent = filedialog.askdirectory(title="配布パッケージの保存先フォルダ")
         if not parent:
             return
-        safe_name = re.sub(r'[<>:"/\\|?*]+', "_", evaluator_name.strip())
-        output = Path(parent) / f"concentration_labeler_{safe_name}"
+        output = Path(parent) / "concentration_labeler_package"
         overwrite = False
         if output.exists():
             overwrite = messagebox.askyesno("上書き確認", f"既存フォルダを作り直しますか？\n{output}")
@@ -301,7 +309,6 @@ class Launcher(tk.Tk):
             str(PYTHON_EXE), str(PACKAGE_BUILDER),
             "--datasets", *[str(entry.root) for entry in entries],
             "--output", str(output),
-            "--evaluator-name", evaluator_name.strip(),
         ]
         if overwrite:
             command.append("--overwrite")

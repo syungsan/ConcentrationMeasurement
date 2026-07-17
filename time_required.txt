@@ -1,0 +1,49 @@
+Eurydice (Core Ultra7 265k & RTX 5070)
+
+01_make_proxy.py
+所要時間: 00:01:07.76 (67.76秒)
+
+02_detect_track.py
+所要時間: 00:31:21.30 (1881.30秒)
+
+03_make_segments.py
+所要時間: 00:00:03.20 (3.20秒)
+
+04_extract_frames_assets.py
+所要時間: 01:25:11.16 (5111.16秒)
+
+05_configure_research_dataset.py
+所要時間: 00:00:03.13 (3.13秒)
+
+
+Orpheus (Ryzen5 3400G & RTX3060)
+
+01_make_proxy.py
+所要時間: 00:08:16.65 (496.65秒)
+
+02_detect_track.py
+所要時間: 01:46:45.83 (6405.83秒)
+
+03_make_segments.py
+所要時間: 00:00:03.87 (3.87秒)
+
+04_extract_frames_assets.py
+所要時間: 05:21:34.95 (19294.95秒)
+
+05_configure_research_dataset.py
+
+
+06_train.py
+skeleton (one-gru)
+所要時間: 00:35:03.43 (2103.43秒)
+fusion (one-gru)
+所要時間: 01:51:32.66 (6692.66秒)
+fusion (one-transformer)
+所要時間: 01:25:08.73 (5108.73秒)
+
+09_video_offline.py
+skeleton (45min-gru)
+所要時間: 20:37:54.26 (74274.26秒)
+fusion (15min-gru)
+所要時間: 10:51:01.27 (39061.27秒)
+fusion (45min-transformer)

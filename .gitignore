@@ -184,8 +184,8 @@ cython_debug/
 
 
 ffmpeg/
-models/
-datasets/
-results/
+models/*
+datasets/*
 outputs/
+predicts/
 WPy64-312101/

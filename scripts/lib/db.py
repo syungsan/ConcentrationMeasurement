@@ -73,7 +73,6 @@ CREATE TABLE IF NOT EXISTS labels (
   segment_id INTEGER NOT NULL,
   rater TEXT NOT NULL,
   score INTEGER NOT NULL CHECK(score BETWEEN 1 AND 7),
-  note TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now')),
   UNIQUE(segment_id, rater),
@@ -84,7 +83,6 @@ CREATE TABLE IF NOT EXISTS window_skips (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   rater TEXT NOT NULL,
   window_id INTEGER NOT NULL,
-  reason TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(rater, window_id),
   FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
@@ -98,7 +96,6 @@ CREATE TABLE IF NOT EXISTS label_events (
   segment_id INTEGER,
   old_score INTEGER,
   new_score INTEGER,
-  note TEXT,
   FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE SET NULL
 );
 
@@ -114,6 +111,8 @@ CREATE TABLE IF NOT EXISTS predictions (
   yhat REAL NOT NULL,              -- 回帰出力
   score_int INTEGER NOT NULL,       -- 1..7 に丸めた値
   situation TEXT NOT NULL CHECK(situation IN ('聞く', '書く', '話し合う')),
+  situation_confidence REAL,
+  situation_probs TEXT,
   x1 REAL, y1 REAL, x2 REAL, y2 REAL,
   det_conf REAL,
   crop_path TEXT,                  -- 保存した場合のみ

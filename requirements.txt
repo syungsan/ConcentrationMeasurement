@@ -5,6 +5,7 @@ numpy
 PySide6
 PyYAML
 pandas
+openpyxl
 
 # PyTorch
 # CUDA 12.8.1

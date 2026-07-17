@@ -5,7 +5,14 @@ import csv
 import hashlib
 import math
 import sqlite3
+import sys
 from pathlib import Path
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.research_schema import ensure_research_schema
 
 
 def open_readonly(path: Path) -> sqlite3.Connection:
@@ -97,7 +104,11 @@ def rebuild_consensus(conn: sqlite3.Connection) -> int:
         )
     """)
     grouped: dict[int, list[float]] = {}
-    for segment_id, score in conn.execute("SELECT segment_id, score FROM labels ORDER BY segment_id"):
+    for segment_id, score in conn.execute("""
+        SELECT l.segment_id, l.score
+        FROM labels l
+        ORDER BY l.segment_id
+    """):
         grouped.setdefault(int(segment_id), []).append(float(score))
     for segment_id, scores in grouped.items():
         mean = sum(scores) / len(scores)
@@ -156,6 +167,7 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
     copy_database(base_db, output, overwrite)
     out = sqlite3.connect(str(output))
     out.execute("PRAGMA foreign_keys=ON")
+    ensure_research_schema(out)
     imported = 0
     duplicates = 0
     raters: set[str] = set()
@@ -171,6 +183,23 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
               raters TEXT NOT NULL
             )
         """)
+        out.execute("""
+            CREATE TABLE IF NOT EXISTS label_observations (
+              segment_id INTEGER NOT NULL,
+              rater TEXT NOT NULL,
+              source_clip_start REAL,
+              source_clip_end REAL, source_clip_sec REAL,
+              updated_at TEXT DEFAULT (datetime('now')),
+              PRIMARY KEY(segment_id, rater),
+              FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
+            )
+        """)
+        observation_columns = {
+            str(row[1]) for row in out.execute("PRAGMA table_info(label_observations)")
+        }
+        for name in ("source_clip_start", "source_clip_end", "source_clip_sec"):
+            if name not in observation_columns:
+                out.execute(f"ALTER TABLE label_observations ADD COLUMN {name} REAL")
         with out:
             for input_path in inputs:
                 source_hash = file_sha256(input_path)
@@ -192,8 +221,8 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
                     reverse_src = {segment_id: key for key, segment_id in src_segments.items()}
                     source_raters: set[str] = set()
                     source_count = 0
-                    for segment_id, rater, score, note, created_at, updated_at in src.execute("""
-                        SELECT segment_id, rater, score, note, created_at, updated_at
+                    for segment_id, rater, score, created_at, updated_at in src.execute("""
+                        SELECT segment_id, rater, score, created_at, updated_at
                         FROM labels ORDER BY id
                     """):
                         key = reverse_src.get(int(segment_id))
@@ -204,12 +233,11 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
                         if not rater:
                             raise RuntimeError(f"blank rater name: {input_path}")
                         existing = out.execute(
-                            "SELECT score, COALESCE(note,'') FROM labels WHERE segment_id=? AND rater=?",
+                            "SELECT score FROM labels WHERE segment_id=? AND rater=?",
                             (destination_segment, rater),
                         ).fetchone()
-                        normalized_note = str(note or "")
                         if existing:
-                            if int(existing[0]) != int(score) or str(existing[1]) != normalized_note:
+                            if int(existing[0]) != int(score):
                                 raise RuntimeError(
                                     f"conflicting label: rater={rater}, segment={destination_segment}, source={input_path}"
                                 )
@@ -217,16 +245,52 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
                             continue
                         out.execute("""
                             INSERT INTO labels(
-                                segment_id, rater, score, note, created_at, updated_at
-                            ) VALUES(?,?,?,?,?,?)
+                                segment_id, rater, score, created_at, updated_at
+                            ) VALUES(?,?,?,?,?)
                         """, (
-                            destination_segment, rater, int(score), note,
+                            destination_segment, rater, int(score),
                             created_at, updated_at or created_at,
                         ))
                         imported += 1
                         source_count += 1
                         source_raters.add(rater)
                         raters.add(rater)
+                    source_tables = {
+                        str(row[0]) for row in src.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table'"
+                        )
+                    }
+                    if "label_observations" in source_tables:
+                        observation_columns = {
+                            str(item[1]) for item in src.execute(
+                                "PRAGMA table_info(label_observations)"
+                            )
+                        }
+                        clip_select = [
+                            name if name in observation_columns else f"NULL AS {name}"
+                            for name in (
+                                "source_clip_start", "source_clip_end", "source_clip_sec"
+                            )
+                        ]
+                        for row in src.execute(f"""
+                            SELECT segment_id, rater,
+                                   {', '.join(clip_select)}, updated_at
+                            FROM label_observations
+                        """):
+                            key = reverse_src.get(int(row[0]))
+                            if key is None:
+                                continue
+                            out.execute("""
+                                INSERT INTO label_observations(
+                                  segment_id,rater,source_clip_start,
+                                  source_clip_end,source_clip_sec,updated_at
+                                ) VALUES(?,?,?,?,?,?)
+                                ON CONFLICT(segment_id,rater) DO UPDATE SET
+                                  source_clip_start=excluded.source_clip_start,
+                                  source_clip_end=excluded.source_clip_end,
+                                  source_clip_sec=excluded.source_clip_sec,
+                                  updated_at=excluded.updated_at
+                            """, (base_segments[key], *row[1:]))
                     out.execute("""
                         INSERT INTO merge_sources(source_name, source_sha256, label_count, raters)
                         VALUES(?,?,?,?)

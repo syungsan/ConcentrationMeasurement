@@ -7,6 +7,7 @@ import yaml
 from ultralytics import YOLO
 
 from lib.db import connect, init_db, upsert_video, ensure_track
+from lib.proxy_id_video import make_proxy_with_track_ids
 from lib.video import get_video_meta
 from lib.runroot import get_data_root, rpath
 
@@ -26,6 +27,7 @@ def main():
     data_root = get_data_root(repo_root)
 
     raw_video = rpath(data_root, cfg["paths"]["raw_video"])
+    proxy_video = rpath(data_root, cfg["paths"]["proxy_video"])
     db_path = rpath(data_root, cfg["paths"]["db_path"])
     detcfg = cfg["detection_tracking"]
 
@@ -76,6 +78,8 @@ def main():
     )
 
     cur = conn.cursor()
+    cur.execute("DELETE FROM detections WHERE video_id=?", (video_id,))
+    conn.commit()
     fps = float(meta.fps)
     frame_idx = 0
     inserted = 0
@@ -114,6 +118,16 @@ def main():
 
     conn.commit()
     print("DONE detections:", inserted, "rows. DB:", db_path)
+    if proxy_video.exists():
+        proxy_id_video = proxy_video.with_name("proxy_ids.mp4")
+        drawn = make_proxy_with_track_ids(
+            db_path=db_path,
+            proxy_video=proxy_video,
+            output_video=proxy_id_video,
+        )
+        print("DONE proxy with IDs:", proxy_id_video, "labels:", drawn)
+    else:
+        print("SKIP proxy with IDs: proxy video not found:", proxy_video)
 
 
 if __name__ == "__main__":

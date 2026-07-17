@@ -11,6 +11,7 @@ from torchvision.models import resnet18, ResNet18_Weights
 
 Mode = Literal["image", "skeleton", "fusion"]
 Agg = Literal["mean", "median"]
+Objective = Literal["regression", "ordinal"]
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,13 @@ class Cfg:
     raters: List[str]
     agg: Agg = "mean"
     label_source: Literal["individual", "consensus"] = "individual"
+    objective: Objective = "ordinal"
+    split_unit: Literal["window", "dataset", "session", "school"] = "school"
+    holdout_groups: List[str] | None = None
+    include_pilot_post: bool = False
+    min_raters: int = 2
+    max_label_std: float | None = None
+    situation_teacher_forcing: float = 0.5
 
     # training
     mode: Mode = "fusion"
@@ -42,6 +50,8 @@ class Cfg:
     img_size: int = 224
     img_feat: int = 256
     imagenet_pretrain: bool = True
+    image_roi: Literal["upper_body", "full_body"] = "upper_body"
+    fusion_image_scale: float = 0.25
 
     # pose
     K: int = 17
@@ -143,6 +153,7 @@ class Regressor(nn.Module):
         if cfg.mode in ("image", "fusion"):
             self.img_enc = ImageEncoder(cfg.img_feat, cfg.imagenet_pretrain)
             feat_dim += cfg.img_feat
+        self.image_scale = float(cfg.fusion_image_scale if cfg.mode == "fusion" else 1.0)
         if cfg.mode in ("skeleton", "fusion"):
             self.pose_enc = PoseEncoder(cfg.K, cfg.pose_dim, cfg.pose_feat)
             feat_dim += cfg.pose_feat
@@ -160,8 +171,9 @@ class Regressor(nn.Module):
             nn.Linear(head_in, head_in // 2),
             nn.ReLU(inplace=True),
             nn.Dropout(cfg.dropout),
-            nn.Linear(head_in // 2, 1),
+            nn.Linear(head_in // 2, 6 if cfg.objective == "ordinal" else 1),
         )
+        self.objective = cfg.objective
 
     def forward(
             self,
@@ -176,7 +188,7 @@ class Regressor(nn.Module):
             B, T, C, H, W = frames.shape
             x = frames.reshape(B * T, C, H, W)
             f = self.img_enc(x).reshape(B, T, -1)  # type: ignore[union-attr]
-            feats.append(f)
+            feats.append(f * self.image_scale)
 
         if self.mode in ("skeleton", "fusion"):
             assert poses is not None
@@ -190,5 +202,78 @@ class Regressor(nn.Module):
 
         x = torch.cat(feats, dim=-1)
         h = self.temporal(x)
-        yhat = self.head(h).squeeze(-1)
-        return yhat
+        raw = self.head(h)
+        if self.objective == "ordinal":
+            # P(y > k), k=1..6. The expected score is bounded to [1, 7].
+            return 1.0 + torch.sigmoid(raw).sum(dim=-1)
+        return raw.squeeze(-1)
+
+    def forward_ordinal_logits(
+            self,
+            frames: Optional[torch.Tensor],
+            poses: Optional[torch.Tensor],
+            situations: torch.Tensor,
+    ) -> torch.Tensor:
+        if self.objective != "ordinal":
+            raise RuntimeError("ordinal logits requested from a regression model")
+        feats: List[torch.Tensor] = []
+        if self.mode in ("image", "fusion"):
+            assert frames is not None
+            B, T, C, H, W = frames.shape
+            f = self.img_enc(frames.reshape(B * T, C, H, W)).reshape(B, T, -1)  # type: ignore[union-attr]
+            feats.append(f * self.image_scale)
+        if self.mode in ("skeleton", "fusion"):
+            assert poses is not None
+            B, T, _K, _D = poses.shape
+            feats.append(self.pose_enc(poses).reshape(B, T, -1))  # type: ignore[union-attr]
+        if situations.ndim == 2:
+            situations = situations.unsqueeze(1).expand(-1, T, -1)
+        feats.append(situations)
+        return self.head(self.temporal(torch.cat(feats, dim=-1)))
+
+
+class SituationClassifier(nn.Module):
+    """Predict the classroom situation from a student's visual time series."""
+
+    def __init__(self, cfg: Cfg):
+        super().__init__()
+        self.mode = cfg.mode
+        feat_dim = 0
+        self.img_enc: Optional[nn.Module] = None
+        self.pose_enc: Optional[nn.Module] = None
+        if cfg.mode in ("image", "fusion"):
+            self.img_enc = ImageEncoder(cfg.img_feat, cfg.imagenet_pretrain)
+            feat_dim += cfg.img_feat
+        self.image_scale = float(cfg.fusion_image_scale if cfg.mode == "fusion" else 1.0)
+        if cfg.mode in ("skeleton", "fusion"):
+            self.pose_enc = PoseEncoder(cfg.K, cfg.pose_dim, cfg.pose_feat)
+            feat_dim += cfg.pose_feat
+        if cfg.temporal == "gru":
+            self.temporal = TemporalGRU(feat_dim, cfg.hidden, cfg.layers, cfg.dropout)
+        else:
+            self.temporal = TemporalTransformer(
+                feat_dim, cfg.hidden, cfg.layers, cfg.dropout
+            )
+        self.head = nn.Sequential(
+            nn.Linear(cfg.hidden, cfg.hidden // 2),
+            nn.ReLU(inplace=True),
+            nn.Dropout(cfg.dropout),
+            nn.Linear(cfg.hidden // 2, cfg.situation_dim),
+        )
+
+    def forward(
+            self,
+            frames: Optional[torch.Tensor],
+            poses: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        feats: List[torch.Tensor] = []
+        if self.mode in ("image", "fusion"):
+            assert frames is not None
+            B, T, C, H, W = frames.shape
+            f = self.img_enc(frames.reshape(B * T, C, H, W)).reshape(B, T, -1)  # type: ignore[union-attr]
+            feats.append(f * self.image_scale)
+        if self.mode in ("skeleton", "fusion"):
+            assert poses is not None
+            B, T, _K, _D = poses.shape
+            feats.append(self.pose_enc(poses).reshape(B, T, -1))  # type: ignore[union-attr]
+        return self.head(self.temporal(torch.cat(feats, dim=-1)))

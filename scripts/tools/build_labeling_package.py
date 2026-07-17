@@ -70,7 +70,9 @@ def validate_source(conn: sqlite3.Connection, db_path: Path) -> None:
         )
 
 
-def create_slim_database(source_root: Path, destination_root: Path) -> dict[str, int]:
+def create_slim_database(
+        source_root: Path, destination_root: Path,
+) -> dict[str, int]:
     source_db = source_root / "db" / "dataset.sqlite"
     if not source_db.exists():
         raise FileNotFoundError(source_db)
@@ -122,7 +124,6 @@ def create_slim_database(source_root: Path, destination_root: Path) -> dict[str,
           segment_id INTEGER NOT NULL,
           rater TEXT NOT NULL,
           score INTEGER NOT NULL CHECK(score BETWEEN 1 AND 7),
-          note TEXT,
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now')),
           UNIQUE(segment_id, rater),
@@ -132,7 +133,6 @@ def create_slim_database(source_root: Path, destination_root: Path) -> dict[str,
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           rater TEXT NOT NULL,
           window_id INTEGER NOT NULL,
-          reason TEXT,
           created_at TEXT DEFAULT (datetime('now')),
           UNIQUE(rater, window_id),
           FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
@@ -145,8 +145,28 @@ def create_slim_database(source_root: Path, destination_root: Path) -> dict[str,
           segment_id INTEGER,
           old_score INTEGER,
           new_score INTEGER,
-          note TEXT,
           FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE SET NULL
+        );
+        CREATE TABLE blind_assignments (
+          rater TEXT NOT NULL,
+          segment_id INTEGER NOT NULL,
+          blind_code TEXT NOT NULL,
+          display_order INTEGER NOT NULL,
+          assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY(rater, segment_id),
+          UNIQUE(rater, blind_code),
+          UNIQUE(rater, display_order),
+          FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
+        );
+        CREATE TABLE label_observations (
+          segment_id INTEGER NOT NULL,
+          rater TEXT NOT NULL,
+          source_clip_start REAL,
+          source_clip_end REAL,
+          source_clip_sec REAL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY(segment_id, rater),
+          FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
         );
         CREATE INDEX idx_windows_video_time ON windows(video_id, t_start, t_end);
         CREATE INDEX idx_seg_window_track ON segments(window_id, track_id);
@@ -251,12 +271,9 @@ def dataset_destination(source_root: Path, package_root: Path) -> Path:
 
 
 def build_package(
-        datasets: list[Path], output: Path, evaluator_name: str,
+        datasets: list[Path], output: Path,
         overwrite: bool, skip_runtime: bool, make_zip: bool,
 ) -> Path:
-    evaluator_name = evaluator_name.strip()
-    if not evaluator_name:
-        raise ValueError("evaluator name must not be blank")
     output = output.resolve()
     if output.exists():
         if not overwrite:
@@ -269,8 +286,17 @@ def build_package(
         shutil.copy2(REPO_ROOT / "launch_labeler.bat", output / "launch_labeler.bat")
         shutil.copy2(REPO_ROOT / "config.yaml", output / "config.yaml")
         (output / "scripts" / "lib").mkdir(parents=True)
-        shutil.copy2(REPO_ROOT / "scripts" / "05_label_gui.py", output / "scripts" / "05_label_gui.py")
+        shutil.copy2(REPO_ROOT / "scripts" / "06_label_gui.py", output / "scripts" / "06_label_gui.py")
         shutil.copy2(REPO_ROOT / "scripts" / "lib" / "situation.py", output / "scripts" / "lib" / "situation.py")
+        shutil.copy2(REPO_ROOT / "scripts" / "lib" / "image_roi.py", output / "scripts" / "lib" / "image_roi.py")
+        shutil.copy2(
+            REPO_ROOT / "scripts" / "lib" / "research_schema.py",
+            output / "scripts" / "lib" / "research_schema.py",
+        )
+        shutil.copy2(
+            REPO_ROOT / "scripts" / "lib" / "rating_clips.py",
+            output / "scripts" / "lib" / "rating_clips.py",
+        )
 
         dataset_results = []
         seen_destinations: set[Path] = set()
@@ -286,6 +312,9 @@ def build_package(
                 raise FileNotFoundError(video)
             (destination_root / "videos").mkdir(parents=True)
             shutil.copy2(video, destination_root / "videos" / "proxy.mp4")
+            proxy_ids = source_root / "videos" / "proxy_ids.mp4"
+            if proxy_ids.exists():
+                shutil.copy2(proxy_ids, destination_root / "videos" / "proxy_ids.mp4")
             counts = create_slim_database(source_root, destination_root)
             dataset_results.append({
                 "dataset": destination_root.relative_to(output / "datasets").as_posix(),
@@ -297,7 +326,7 @@ def build_package(
 
         package_config = {
             "distribution_mode": "evaluator",
-            "evaluator_name": evaluator_name,
+            "evaluator_name": "",
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "datasets": dataset_results,
             "runtime_included": not skip_runtime,
@@ -323,13 +352,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--datasets", nargs="+", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--evaluator-name", required=True)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--skip-runtime", action="store_true", help="テスト用: WinPythonをコピーしない")
     parser.add_argument("--zip", action="store_true", help="生成後にzipも作成")
     args = parser.parse_args()
     output = build_package(
-        args.datasets, args.output, args.evaluator_name,
+        args.datasets, args.output,
         args.overwrite, args.skip_runtime, args.zip,
     )
     print(f"package: {output}")

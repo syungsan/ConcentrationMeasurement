@@ -95,7 +95,6 @@ def migrate(db_path: Path) -> None:
               segment_id INTEGER NOT NULL,
               rater TEXT NOT NULL,
               score INTEGER NOT NULL CHECK(score BETWEEN 1 AND 7),
-              note TEXT,
               created_at TEXT DEFAULT (datetime('now')),
               updated_at TEXT DEFAULT (datetime('now')),
               UNIQUE(segment_id, rater),
@@ -107,7 +106,6 @@ def migrate(db_path: Path) -> None:
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               rater TEXT NOT NULL,
               window_id INTEGER NOT NULL,
-              reason TEXT,
               created_at TEXT DEFAULT (datetime('now')),
               UNIQUE(rater, window_id),
               FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
@@ -122,7 +120,6 @@ def migrate(db_path: Path) -> None:
               segment_id INTEGER,
               old_score INTEGER,
               new_score INTEGER,
-              note TEXT,
               FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE SET NULL
             )
         """)
@@ -146,33 +143,23 @@ def migrate(db_path: Path) -> None:
             FROM segment_frames_legacy
         """)
 
-        if table_exists(conn, "label_window_meta_legacy"):
-            conn.execute("""
-                INSERT INTO labels(id, segment_id, rater, score, note, created_at, updated_at)
-                SELECT l.id, l.segment_id, l.rater, l.score, m.note,
-                       l.created_at, l.created_at
-                FROM labels_legacy l
-                LEFT JOIN label_window_meta_legacy m
-                       ON m.segment_id=l.segment_id AND m.rater=l.rater
-            """)
-        else:
-            conn.execute("""
-                INSERT INTO labels(id, segment_id, rater, score, created_at, updated_at)
-                SELECT id, segment_id, rater, score, created_at, created_at
-                FROM labels_legacy
-            """)
+        conn.execute("""
+            INSERT INTO labels(id, segment_id, rater, score, created_at, updated_at)
+            SELECT id, segment_id, rater, score, created_at, created_at
+            FROM labels_legacy
+        """)
 
         if table_exists(conn, "window_skips_legacy"):
             conn.execute("""
-                INSERT INTO window_skips(rater, window_id, reason, created_at)
-                SELECT ws.rater, w.id, ws.reason, ws.created_at
+                INSERT INTO window_skips(rater, window_id, created_at)
+                SELECT ws.rater, w.id, ws.created_at
                 FROM window_skips_legacy ws
                 JOIN windows w ON w.t_start=ws.t_start AND w.t_end=ws.t_end
             """)
         if table_exists(conn, "label_events_legacy"):
             conn.execute("""
-                INSERT INTO label_events(id, created_at, rater, action, segment_id, old_score, new_score, note)
-                SELECT id, created_at, rater, action, segment_id, old_score, new_score, note
+                INSERT INTO label_events(id, created_at, rater, action, segment_id, old_score, new_score)
+                SELECT id, created_at, rater, action, segment_id, old_score, new_score
                 FROM label_events_legacy
             """)
 

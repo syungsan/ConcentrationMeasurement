@@ -27,6 +27,7 @@ segments:
 sampling:
   sample_fps: 2.0             # 時系列サンプル（2～5推奨）
   crop_long_side: 384         # 保存クロップ長辺（256～512推奨）
+  image_roi: "upper_body"     # RGBモデル入力は全身ではなく頭〜上半身を使用（full_body も指定可）
 
 pose:
   model: "models/yolov8x-pose.pt"

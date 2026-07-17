@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="fd1c86c7-e4d4-4999-aedd-4c1c4bebbb85" name="変更" comment="">
+      <change afterPath="$PROJECT_DIR$/requirements_for_mac.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/launcher.py" beforeDir="false" afterPath="$PROJECT_DIR$/launcher.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/02_detect_track.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/02_detect_track.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/05_label_gui.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/06_train.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/07_realtime.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/08_video_offline.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/09_aggregate_predictions.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/db.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/infer.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/infer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/model_defs.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/model_defs.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/fix_db_assets_prefix.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/fix_db_paths.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/merge_rater_databases.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/merge_rater_databases.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/migrate_windows_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/migrate_windows_schema.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="81630" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.6549111893879935" />
+      <entry key="MS500" value="2.727711181900569" />
+      <entry key="S2" value="5.705334402645276" />
+      <entry key="S5" value="9.174246031703715" />
+      <entry key="S10" value="11.457790288411786" />
+      <entry key="S30" value="13.628552253342354" />
+      <entry key="S60" value="14.286052238307828" />
+      <entry key="M2" value="14.635579622875548" />
+      <entry key="M5" value="14.852391659065962" />
+      <entry key="M10" value="14.925884577803265" />
+      <entry key="M15" value="14.9505202145319" />
+      <entry key="M30" value="14.975333849527264" />
+      <entry key="H1" value="15.012012294333882" />
+      <entry key="H2" value="15.914018136354482" />
+      <entry key="H4" value="24.065940401180875" />
+      <entry key="D1" value="87.41035555466794" />
+      <entry key="W1" value="119.40983462139776" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="1.5831574036377356" />
+      <entry key="MS500" value="2.702709174497127" />
+      <entry key="S2" value="5.691328296773024" />
+      <entry key="S5" value="9.164174679782324" />
+      <entry key="S10" value="11.45084820512577" />
+      <entry key="S30" value="13.625512464925954" />
+      <entry key="S60" value="14.284410897772474" />
+      <entry key="M2" value="14.63472561328349" />
+      <entry key="M5" value="14.852041637537075" />
+      <entry key="M10" value="14.925708127826473" />
+      <entry key="M15" value="14.950402258644477" />
+      <entry key="M30" value="14.975274708599118" />
+      <entry key="H1" value="15.011982475828894" />
+      <entry key="H2" value="15.913994432178514" />
+      <entry key="H4" value="24.065876426223" />
+      <entry key="D1" value="87.4102702393906" />
+      <entry key="W1" value="119.40981690444877" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 3,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3GRBl3ekvuE12qmFLUgmqbhhbti" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.launcher.executor": "Run",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "main",
+    "junie.onboarding.icon.badge.shown": "true",
+    "kotlin-language-version-configured": "true",
+    "last_opened_file_path": "D:/MyProjects/python/concentration_measurement/concentration_measurement",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "project.structure.last.edited": "SDK",
+    "project.structure.proportion": "0.15",
+    "project.structure.side.proportion": "0.2",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-jdk-30f59d01ecdd-63390994e64e-intellij.indexing.shared.core-IU-262.8665.258" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="デフォルトタスク">
+      <changelist id="fd1c86c7-e4d4-4999-aedd-4c1c4bebbb85" name="変更" comment="" />
+      <created>1783924655926</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1783924655926</updated>
+      <workItem from="1783924660015" duration="12475000" />
+      <workItem from="1784116216457" duration="6400000" />
+      <workItem from="1784130172230" duration="5176000" />
+      <workItem from="1784278921860" duration="4932000" />
+      <workItem from="1784291883951" duration="768000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
