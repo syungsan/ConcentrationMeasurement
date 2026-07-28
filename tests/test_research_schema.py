@@ -28,14 +28,14 @@ class ResearchSchemaTests(unittest.TestCase):
               height INTEGER, frame_count INTEGER
             );
             CREATE TABLE windows(
-              id INTEGER PRIMARY KEY, t_start REAL, t_end REAL,
+              id INTEGER PRIMARY KEY, video_id INTEGER, t_start REAL, t_end REAL,
               situation TEXT, situation_locked INTEGER
             );
             CREATE TABLE segments(
               id INTEGER PRIMARY KEY, window_id INTEGER, track_id INTEGER
             );
             INSERT INTO videos VALUES(1,24,1920,1080,1000);
-            INSERT INTO windows VALUES(1,0,5,'listen',1),(2,5,10,'write',1);
+            INSERT INTO windows VALUES(1,1,0,5,'listen',1),(2,1,5,10,'write',1);
             INSERT INTO segments VALUES(1,1,10),(2,1,11),(3,2,10);
         """)
 
@@ -121,6 +121,14 @@ class ResearchSchemaTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM blind_assignments WHERE rater='rater-a'"
             ).fetchone()[0],
             3,
+        )
+        self.assertEqual(
+            self.conn.execute("""
+                SELECT segment_id FROM blind_assignments
+                WHERE rater='rater-a'
+                ORDER BY display_order
+            """).fetchall(),
+            [(1,), (2,), (3,)],
         )
 
 

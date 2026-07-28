@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 PYTHON_EXE = ROOT / "WPy64-312101" / "python" / "python.exe"
 LABEL_GUI = ROOT / "scripts" / "06_label_gui.py"
 MERGE_SCRIPT = ROOT / "scripts" / "tools" / "merge_rater_databases.py"
-PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_package.py"
+PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_packagepy"
 DATASETS_DIR = ROOT / "datasets"
 PACKAGE_CONFIG_PATH = ROOT / "package_config.json"
 
@@ -299,7 +299,7 @@ class Launcher(tk.Tk):
         parent = filedialog.askdirectory(title="配布パッケージの保存先フォルダ")
         if not parent:
             return
-        output = Path(parent) / "concentration_labeler_package"
+        output = Path(parent) / "concentration_labeler"
         overwrite = False
         if output.exists():
             overwrite = messagebox.askyesno("上書き確認", f"既存フォルダを作り直しますか？\n{output}")

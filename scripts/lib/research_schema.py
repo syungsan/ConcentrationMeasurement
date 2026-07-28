@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import hashlib
-import random
 import sqlite3
 from dataclasses import dataclass
 from typing import Iterable
@@ -187,7 +186,7 @@ def eligible_for_training(metadata: dict[str, object], include_pilot_post: bool)
 def ensure_blind_assignments(
         conn: sqlite3.Connection, rater: str,
 ) -> int:
-    """Create a stable, evaluator-specific random order on first use."""
+    """Create a stable chronological evaluation order on first use."""
     rater = rater.strip()
     if not rater:
         raise ValueError("rater must not be blank")
@@ -197,42 +196,28 @@ def ensure_blind_assignments(
     ).fetchone()[0])
     if existing:
         return existing
-    window_segments: dict[int, list[int]] = {}
-    for window_id, segment_id in conn.execute("""
-        SELECT w.id, s.id FROM windows w
+    segment_ids: list[int] = []
+    for (segment_id,) in conn.execute("""
+        SELECT s.id FROM windows w
         JOIN segments s ON s.window_id=w.id
         WHERE w.situation IS NOT NULL AND w.situation_locked=1
-        ORDER BY w.t_start, s.track_id
+        ORDER BY w.video_id, w.t_start, w.t_end, s.track_id, s.id
     """):
-        window_segments.setdefault(int(window_id), []).append(int(segment_id))
-    if not window_segments:
+        segment_ids.append(int(segment_id))
+    if not segment_ids:
         raise RuntimeError("no locked situation windows are available for rating")
-    video_signature = conn.execute("""
-        SELECT COALESCE(fps,0), COALESCE(width,0), COALESCE(height,0),
-               COALESCE(frame_count,0) FROM videos ORDER BY id LIMIT 1
-    """).fetchone()
-    topology = ",".join(str(value) for value in sorted(window_segments))
-    topology += f":{video_signature}:{sum(map(len, window_segments.values()))}"
-    seed_text = f"{rater}:{topology}:classroom_engagement_v1"
-    seed = int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:16], 16)
-    rng = random.Random(seed)
-    window_ids = list(window_segments)
-    rng.shuffle(window_ids)
     order = 0
     with conn:
-        for window_id in window_ids:
-            segment_ids = window_segments[window_id]
-            rng.shuffle(segment_ids)
-            for segment_id in segment_ids:
-                order += 1
-                blind_code = hashlib.sha256(
-                    f"{seed}:{segment_id}".encode("utf-8")
-                ).hexdigest()[:12].upper()
-                conn.execute("""
-                    INSERT INTO blind_assignments(
-                      rater,segment_id,blind_code,display_order
-                    ) VALUES(?,?,?,?)
-                """, (rater, segment_id, blind_code, order))
+        for segment_id in segment_ids:
+            order += 1
+            blind_code = hashlib.sha256(
+                f"{rater}:{segment_id}:classroom_engagement_v2".encode("utf-8")
+            ).hexdigest()[:12].upper()
+            conn.execute("""
+                INSERT INTO blind_assignments(
+                  rater,segment_id,blind_code,display_order
+                ) VALUES(?,?,?,?)
+            """, (rater, segment_id, blind_code, order))
     return order
 
 

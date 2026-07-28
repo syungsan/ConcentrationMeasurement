@@ -43,6 +43,8 @@ class TrackState:
     last_seen: int           # frame index
     det_conf: float = 1.0
     kpts_frame: Optional[np.ndarray] = None  # [K,3] x,y,conf in FRAME coordinates
+    ready: bool = False
+    last_infer_t: Optional[float] = None
 
 
 def ema(old: float, new: float, alpha: float) -> float:
@@ -316,15 +318,6 @@ def pose_to_frame_coords(
     return out
 
 
-def pad_seq(seq: List[Any], T_: int) -> List[Any]:
-    if len(seq) >= T_:
-        return seq[-T_:]
-    if len(seq) == 0:
-        return []
-    last = seq[-1]
-    return seq + [last] * (T_ - len(seq))
-
-
 # -------------------------
 # Stable ID remap (reduce ID switches)
 # -------------------------
@@ -596,6 +589,18 @@ def parse_args():
         help="Manual override. Omit to estimate the situation automatically.",
     )
     ap.add_argument("--situation_alpha", type=float, default=0.15)
+    situation_feature_group = ap.add_mutually_exclusive_group()
+    situation_feature_group.add_argument(
+        "--use-situation-feature", "--use_situation_feature",
+        dest="use_situation_feature", action="store_true",
+        help="Feed situation probabilities into concentration prediction.",
+    )
+    situation_feature_group.add_argument(
+        "--no-situation-feature", "--no_situation_feature",
+        dest="use_situation_feature", action="store_false",
+        help="Keep situation estimation/logging/display, but exclude it from concentration prediction.",
+    )
+    ap.set_defaults(use_situation_feature=None)
     ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     ap.add_argument("--data_root", type=str, default=None)
@@ -610,6 +615,14 @@ def parse_args():
     ap.add_argument("--iou", type=float, default=None)
 
     ap.add_argument("--T", type=int, default=0)
+    ap.add_argument(
+        "--sample_fps", type=float, default=0.0,
+        help="Temporal input sampling rate. 0 uses config.yaml sampling.sample_fps (default: 2 fps).",
+    )
+    ap.add_argument(
+        "--infer_step_sec", type=float, default=1.0,
+        help="Seconds between predictions after a full temporal window is available (default: 1.0).",
+    )
     ap.add_argument("--save_assets", action="store_true")
     ap.add_argument("--assets_dir", type=str, default="outputs/assets")
 
@@ -685,6 +698,12 @@ def main():
         raise FileNotFoundError(f"video not found: {video_path}")
 
     ckpt, train_cfg, reg = load_ckpt(Path(args.ckpt).resolve(), mode=args.mode, device=args.device)
+    use_situation_feature = (
+        bool(train_cfg.use_situation_feature)
+        if args.use_situation_feature is None else bool(args.use_situation_feature)
+    )
+    reg.use_situation_feature = use_situation_feature
+    print(f"use_situation_feature={use_situation_feature}")
     image_roi = str(getattr(train_cfg, "image_roi", ycfg.get("sampling", {}).get("image_roi", "upper_body")))
     situation_model = None
     situation_smoother = SituationProbabilitySmoother(args.situation_alpha)
@@ -697,6 +716,21 @@ def main():
     current_situation_probs[SITUATIONS.index(current_situation)] = 1.0
 
     T = args.T if args.T > 0 else int(train_cfg.T)
+    sample_fps = (
+        float(args.sample_fps)
+        if float(args.sample_fps) > 0
+        else float(ycfg["sampling"]["sample_fps"])
+    )
+    infer_step_sec = float(args.infer_step_sec)
+    if sample_fps <= 0:
+        raise ValueError("sample_fps must be > 0")
+    if infer_step_sec <= 0:
+        raise ValueError("infer_step_sec must be > 0")
+    temporal_window_sec = float(T) / sample_fps
+    print(
+        f"temporal sampling: T={T}, sample_fps={sample_fps:g}, "
+        f"window={temporal_window_sec:g}s, infer_step={infer_step_sec:g}s"
+    )
     img_tf = build_image_tf(int(train_cfg.img_size))
 
     det_model_path = args.det_model or ycfg["detection_tracking"]["model"]
@@ -790,10 +824,16 @@ def main():
 
     frame_idx = -1
     committed = 0
+    last_sample_slot = -1
 
     for r in results:
         frame_idx += 1
         t = float(frame_idx) / float(fps)
+        sample_slot = int(math.floor(t * sample_fps + 1e-9))
+        sample_due = sample_slot > last_sample_slot
+        if sample_due:
+            last_sample_slot = sample_slot
+        inferred_tids: set[int] = set()
 
         frame = r.orig_img
         if frame is None:
@@ -826,7 +866,7 @@ def main():
                 continue
             image_crop = image_model_crop(crop, image_roi)
 
-            if args.mode in ("image", "fusion"):
+            if sample_due and args.mode in ("image", "fusion"):
                 rgb = cv2.cvtColor(image_crop, cv2.COLOR_BGR2RGB)
                 pil = Image.fromarray(rgb)
                 ft = img_tf(pil)
@@ -852,7 +892,7 @@ def main():
                     arr_norm = arr.copy()
                     arr_norm[:, :2] = 0.0
 
-                if args.mode in ("skeleton", "fusion"):
+                if sample_due and args.mode in ("skeleton", "fusion"):
                     pose_buf.setdefault(tid, deque(maxlen=T)).append(arr_norm)
 
                 # draw coords: raw arr -> frame coords
@@ -863,22 +903,29 @@ def main():
                     crop_xy1=(x1i, y1i),
                 )
 
-            frames_in: Optional[torch.Tensor] = None
-            poses_in: Optional[torch.Tensor] = None
+            existing_state = tracks.get(tid)
+            image_ready = args.mode not in ("image", "fusion") or len(img_buf.get(tid, ())) >= T
+            pose_ready = args.mode not in ("skeleton", "fusion") or len(pose_buf.get(tid, ())) >= T
+            infer_due = (
+                sample_due
+                and image_ready
+                and pose_ready
+                and (
+                    existing_state is None
+                    or existing_state.last_infer_t is None
+                    or t - existing_state.last_infer_t >= infer_step_sec - 1e-9
+                )
+            )
 
-            if args.mode in ("image", "fusion"):
-                seq = pad_seq(list(img_buf.get(tid, [])), T)
-                if len(seq) > 0:
-                    frames_in = torch.stack(seq, dim=0).unsqueeze(0)
+            score_raw = float("nan")
+            if infer_due:
+                frames_in: Optional[torch.Tensor] = None
+                poses_in: Optional[torch.Tensor] = None
+                if args.mode in ("image", "fusion"):
+                    frames_in = torch.stack(list(img_buf[tid]), dim=0).unsqueeze(0)
+                if args.mode in ("skeleton", "fusion"):
+                    poses_in = torch.from_numpy(np.stack(list(pose_buf[tid]), axis=0)).unsqueeze(0)
 
-            if args.mode in ("skeleton", "fusion"):
-                seqp = pad_seq(list(pose_buf.get(tid, [])), T)
-                if len(seqp) > 0:
-                    poses_in = torch.from_numpy(np.stack(seqp, axis=0)).unsqueeze(0)
-
-            if (args.mode == "image" and frames_in is None) or (args.mode == "skeleton" and poses_in is None) or (args.mode == "fusion" and (frames_in is None or poses_in is None)):
-                score_raw = float("nan")
-            else:
                 if situation_model is not None:
                     local_probs = predict_situation_probs(
                         situation_model, frames_in, poses_in, args.device
@@ -896,25 +943,34 @@ def main():
                         reg, frames_in, poses_in, device=args.device,
                         situation=current_situation,
                     )
+                if not math.isnan(score_raw):
+                    inferred_tids.add(tid)
 
             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
             if tid in tracks:
                 st = tracks[tid]
                 st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
                 if not math.isnan(score_raw):
-                    st.score = ema(st.score, float(score_raw), float(args.score_alpha))
+                    st.score = (
+                        ema(st.score, float(score_raw), float(args.score_alpha))
+                        if st.ready else float(score_raw)
+                    )
+                    st.ready = True
+                    st.last_infer_t = t
                 st.last_seen = frame_idx
                 st.det_conf = det_conf
                 if kpts_for_draw is not None:
                     st.kpts_frame = kpts_for_draw
             else:
-                init_score = float(score_raw) if not math.isnan(score_raw) else 5.0
+                has_score = not math.isnan(score_raw)
                 tracks[tid] = TrackState(
                     bbox=bbox_new,
-                    score=init_score,
+                    score=float(score_raw) if has_score else float("nan"),
                     last_seen=frame_idx,
                     det_conf=det_conf,
                     kpts_frame=kpts_for_draw,
+                    ready=has_score,
+                    last_infer_t=t if has_score else None,
                 )
 
             if args.save_assets:
@@ -948,10 +1004,14 @@ def main():
             tid_to_sid = {int(d["tid"]): int(d["stable_id"]) for d in dets}
 
         # class avg
-        scores_now = [float(st.score) for _tid, st in alive if not math.isnan(float(st.score))]
-        if scores_now:
-            avg_now = float(np.mean(scores_now))
+        scores_now = [float(st.score) for _tid, st in alive if st.ready]
+        newly_inferred_scores = [
+            float(st.score) for tid, st in alive if tid in inferred_tids and st.ready
+        ]
+        if newly_inferred_scores:
+            avg_now = float(np.mean(newly_inferred_scores))
             class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
+        if class_avg_ema is not None:
             avg_display = min(7.0, max(1.0, float(class_avg_ema)))
             draw_label(
                 frame, 20, 55,
@@ -985,11 +1045,14 @@ def main():
 
             cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
 
-            score_i = clamp_1to7(float(st.score))
             show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
+            score_text = (
+                str(clamp_1to7(float(st.score)))
+                if st.ready else f"warming {max(len(img_buf.get(tid, ())), len(pose_buf.get(tid, ())))}/{T}"
+            )
             draw_label(
                 frame, x1i, y1i,
-                f"ID:{int(show_id)}  score:{score_i}",
+                f"ID:{int(show_id)}  score:{score_text}",
                 font_scale=float(args.label_scale),
                 thickness=int(args.label_thick),
             )
@@ -1014,6 +1077,8 @@ def main():
 
         # log DB
         for tid, st in alive:
+            if tid not in inferred_tids or not st.ready:
+                continue
             x1, y1, x2, y2 = st.bbox.tolist()
             score = float(st.score)
             sid = tid_to_sid.get(tid, None) if (args.stable_id and mapper is not None) else None

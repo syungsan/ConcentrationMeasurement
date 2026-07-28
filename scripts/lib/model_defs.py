@@ -31,6 +31,7 @@ class Cfg:
     min_raters: int = 2
     max_label_std: float | None = None
     situation_teacher_forcing: float = 0.5
+    use_situation_feature: bool = True
 
     # training
     mode: Mode = "fusion"
@@ -145,6 +146,7 @@ class Regressor(nn.Module):
     def __init__(self, cfg: Cfg):
         super().__init__()
         self.mode = cfg.mode
+        self.use_situation_feature = bool(cfg.use_situation_feature)
 
         feat_dim = 0
         self.img_enc: Optional[nn.Module] = None
@@ -196,6 +198,8 @@ class Regressor(nn.Module):
             p = self.pose_enc(poses).reshape(B, T, -1)  # type: ignore[union-attr]
             feats.append(p)
 
+        if not self.use_situation_feature:
+            situations = torch.zeros_like(situations)
         if situations.ndim == 2:
             situations = situations.unsqueeze(1).expand(-1, T, -1)
         feats.append(situations)
@@ -226,6 +230,8 @@ class Regressor(nn.Module):
             assert poses is not None
             B, T, _K, _D = poses.shape
             feats.append(self.pose_enc(poses).reshape(B, T, -1))  # type: ignore[union-attr]
+        if not self.use_situation_feature:
+            situations = torch.zeros_like(situations)
         if situations.ndim == 2:
             situations = situations.unsqueeze(1).expand(-1, T, -1)
         feats.append(situations)

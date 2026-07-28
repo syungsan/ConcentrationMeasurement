@@ -5,28 +5,25 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="fd1c86c7-e4d4-4999-aedd-4c1c4bebbb85" name="変更" comment="">
-      <change afterPath="$PROJECT_DIR$/requirements_for_mac.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/current_task_summary_2.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RESEARCH_WORKFLOW.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/concentration_measurement.iml" beforeDir="false" afterPath="$PROJECT_DIR$/concentration_measurement.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/current_task_summary.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/labeling_workflow_memo.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/labeling_workflow_memo.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/launcher.py" beforeDir="false" afterPath="$PROJECT_DIR$/launcher.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/02_detect_track.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/02_detect_track.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/05_label_gui.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/06_train.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/07_realtime.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/08_video_offline.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/09_aggregate_predictions.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lib/db.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lib/infer.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/infer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/07_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/07_train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/08_realtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/08_realtime.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/09_video_offline.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/09_video_offline.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lib/model_defs.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/model_defs.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/research_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/research_schema.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/tools/fix_db_assets_prefix.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/tools/fix_db_paths.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/tools/merge_rater_databases.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/merge_rater_databases.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/tools/migrate_windows_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/migrate_windows_schema.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_research_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_research_schema.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/time_required.txt" beforeDir="false" afterPath="$PROJECT_DIR$/time_required.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -34,7 +31,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="81630" />
+    <option name="cachedIndexableFilesCount" value="136183" />
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -45,23 +42,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.6549111893879935" />
-      <entry key="MS500" value="2.727711181900569" />
-      <entry key="S2" value="5.705334402645276" />
-      <entry key="S5" value="9.174246031703715" />
-      <entry key="S10" value="11.457790288411786" />
-      <entry key="S30" value="13.628552253342354" />
-      <entry key="S60" value="14.286052238307828" />
-      <entry key="M2" value="14.635579622875548" />
-      <entry key="M5" value="14.852391659065962" />
-      <entry key="M10" value="14.925884577803265" />
-      <entry key="M15" value="14.9505202145319" />
-      <entry key="M30" value="14.975333849527264" />
-      <entry key="H1" value="15.012012294333882" />
-      <entry key="H2" value="15.914018136354482" />
-      <entry key="H4" value="24.065940401180875" />
-      <entry key="D1" value="87.41035555466794" />
-      <entry key="W1" value="119.40983462139776" />
+      <entry key="MS100" value="1.8625306195024707" />
+      <entry key="MS500" value="3.667367372951725" />
+      <entry key="S2" value="5.56832644779331" />
+      <entry key="S5" value="7.430121217418015" />
+      <entry key="S10" value="8.57447783664064" />
+      <entry key="S30" value="9.841381666540318" />
+      <entry key="S60" value="10.342568333768023" />
+      <entry key="M2" value="10.647284288572504" />
+      <entry key="M5" value="10.852453592811917" />
+      <entry key="M10" value="10.925085421528927" />
+      <entry key="M15" value="10.949800086180495" />
+      <entry key="M30" value="10.98000813041315" />
+      <entry key="H1" value="11.287503954002439" />
+      <entry key="H2" value="13.647867482860995" />
+      <entry key="H4" value="21.285565422900433" />
+      <entry key="D1" value="90.70273654678286" />
+      <entry key="W1" value="141.380931129895" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -83,23 +80,23 @@
       <entry key="W1" value="0.0" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="1.5831574036377356" />
-      <entry key="MS500" value="2.702709174497127" />
-      <entry key="S2" value="5.691328296773024" />
-      <entry key="S5" value="9.164174679782324" />
-      <entry key="S10" value="11.45084820512577" />
-      <entry key="S30" value="13.625512464925954" />
-      <entry key="S60" value="14.284410897772474" />
-      <entry key="M2" value="14.63472561328349" />
-      <entry key="M5" value="14.852041637537075" />
-      <entry key="M10" value="14.925708127826473" />
-      <entry key="M15" value="14.950402258644477" />
-      <entry key="M30" value="14.975274708599118" />
-      <entry key="H1" value="15.011982475828894" />
-      <entry key="H2" value="15.913994432178514" />
-      <entry key="H4" value="24.065876426223" />
-      <entry key="D1" value="87.4102702393906" />
-      <entry key="W1" value="119.40981690444877" />
+      <entry key="MS100" value="1.7764408353552639" />
+      <entry key="MS500" value="3.6325551127179287" />
+      <entry key="S2" value="5.554769369810026" />
+      <entry key="S5" value="7.422779382536665" />
+      <entry key="S10" value="8.570166257067545" />
+      <entry key="S30" value="9.839623618198269" />
+      <entry key="S60" value="10.341609471364874" />
+      <entry key="M2" value="10.646778746875796" />
+      <entry key="M5" value="10.85224408032638" />
+      <entry key="M10" value="10.924979351026394" />
+      <entry key="M15" value="10.949729072653055" />
+      <entry key="M30" value="10.979972438252918" />
+      <entry key="H1" value="11.28748512535979" />
+      <entry key="H2" value="13.647854027284897" />
+      <entry key="H4" value="21.285543387169138" />
+      <entry key="D1" value="90.70266878168444" />
+      <entry key="W1" value="141.3809135936144" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -125,15 +122,18 @@
     "git-widget-placeholder": "main",
     "junie.onboarding.icon.badge.shown": "true",
     "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "D:/MyProjects/python/concentration_measurement/concentration_measurement",
+    "last_opened_file_path": "D:/MyProjects/python_projects/concentration_measurement/concentration_measurement",
     "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.jshint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.jshint": "",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
     "project.structure.last.edited": "SDK",
     "project.structure.proportion": "0.15",
     "project.structure.side.proportion": "0.2",
+    "run.code.analysis.last.selected.profile": "pProject Default",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
@@ -142,11 +142,18 @@
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement" />
     </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement\outputs\predictions" />
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement\outputs" />
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement\docs" />
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement\scripts\tools" />
+      <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement\verifications" />
+    </key>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-30f59d01ecdd-63390994e64e-intellij.indexing.shared.core-IU-262.8665.258" />
+        <option value="bundled-jdk-30f59d01ecdd-63390994e64e-intellij.indexing.shared.core-IU-262.8665.337" />
       </set>
     </attachedChunks>
   </component>
@@ -162,6 +169,23 @@
       <workItem from="1784130172230" duration="5176000" />
       <workItem from="1784278921860" duration="4932000" />
       <workItem from="1784291883951" duration="768000" />
+      <workItem from="1784299603542" duration="5196000" />
+      <workItem from="1784349969293" duration="548000" />
+      <workItem from="1784351356225" duration="5650000" />
+      <workItem from="1784514920744" duration="1245000" />
+      <workItem from="1784554293112" duration="1549000" />
+      <workItem from="1784669913645" duration="5131000" />
+      <workItem from="1784724758252" duration="11322000" />
+      <workItem from="1784802064026" duration="3216000" />
+      <workItem from="1784813625684" duration="1328000" />
+      <workItem from="1784883108694" duration="5796000" />
+      <workItem from="1784889550133" duration="8113000" />
+      <workItem from="1784945839926" duration="2271000" />
+      <workItem from="1785033875682" duration="15299000" />
+      <workItem from="1785075447159" duration="9424000" />
+      <workItem from="1785131886186" duration="4112000" />
+      <workItem from="1785136835212" duration="83000" />
+      <workItem from="1785164877638" duration="620000" />
     </task>
     <servers />
   </component>

@@ -1,0 +1,22 @@
+{
+  "db": "D:\\MyProjects\\python\\concentration_measurement\\concentration_measurement\\outputs\\predictions\\20260313_unnan_nishi_5-1_1_full\\pred_log.sqlite",
+  "output": "D:\\MyProjects\\python\\concentration_measurement\\concentration_measurement\\.codex_work\\ab_report_test_0.xlsx",
+  "events": 1,
+  "settings": {
+    "pre_sec": 300.0,
+    "pre_gap_sec": 0.0,
+    "post_sec": 300.0,
+    "cooldown_sec": 90.0,
+    "cooldown_sensitivity": [
+      0.0,
+      30.0,
+      60.0,
+      90.0,
+      120.0,
+      180.0
+    ],
+    "bin_sec": 5.0,
+    "trim_proportion": 0.1,
+    "min_tracks": 3
+  }
+}

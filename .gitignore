@@ -187,5 +187,5 @@ ffmpeg/
 models/*
 datasets/*
 outputs/
-predicts/
+inputs/
 WPy64-312101/

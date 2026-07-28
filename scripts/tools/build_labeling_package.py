@@ -334,11 +334,13 @@ def build_package(
         (output / "package_config.json").write_text(
             json.dumps(package_config, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        '''
         (output / "RETURN_INSTRUCTIONS.txt").write_text(
             "採点後はすべての画面を終了し、datasets内の db\\dataset.sqlite を"
             "管理者へ渡してください。\n",
             encoding="utf-8-sig",
         )
+        '''
     except Exception:
         shutil.rmtree(output, ignore_errors=True)
         raise

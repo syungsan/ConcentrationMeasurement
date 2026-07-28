@@ -5,6 +5,7 @@ import time
 SCRIPT_STARTED_AT = time.perf_counter()
 
 import argparse
+import csv
 import json
 import math
 import random
@@ -14,6 +15,10 @@ from pathlib import Path
 from typing import Optional, Tuple, List, Dict
 
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -48,6 +53,124 @@ def load_yaml_cfg(repo_root: Path) -> dict:
 
 def rpath(base: Path, p: str) -> Path:
     return (base / Path(p)).resolve()
+
+
+def write_csv_dicts(path: Path, rows: List[Dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    fieldnames: List[str] = []
+    for row in rows:
+        for key in row.keys():
+            if key not in fieldnames:
+                fieldnames.append(key)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def save_figure(fig: plt.Figure, path: Path, *, dpi: int = 160) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=dpi)
+    fig.savefig(path.with_suffix(".svg"))
+
+
+def write_line_plot(
+        path: Path,
+        rows: List[Dict[str, object]],
+        series: List[Tuple[str, str]],
+        *,
+        title: str,
+        y_label: str,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sns.set_theme(style="whitegrid")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plotted = False
+    for key, label in series:
+        xs: List[float] = []
+        ys: List[float] = []
+        for row in rows:
+            try:
+                x = float(row["epoch"])
+                y = float(row[key])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if math.isfinite(x) and math.isfinite(y):
+                xs.append(x)
+                ys.append(y)
+        if xs:
+            ax.plot(xs, ys, marker="o", linewidth=2, label=label)
+            plotted = True
+    ax.set_title(title)
+    ax.set_xlabel("epoch")
+    ax.set_ylabel(y_label)
+    if plotted:
+        ax.legend(loc="best")
+    fig.tight_layout()
+    save_figure(fig, path, dpi=160)
+    plt.close(fig)
+
+
+def write_training_artifacts(
+        report_dir: Path,
+        concentration_history: Dict[str, List[Dict[str, object]]],
+        situation_history: Dict[str, List[Dict[str, object]]],
+) -> None:
+    report_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        report_dir / "history.json",
+        {
+            "concentration": concentration_history,
+            "situation": situation_history,
+        },
+    )
+    for mode, rows in concentration_history.items():
+        write_csv_dicts(report_dir / f"concentration_{mode}_history.csv", rows)
+        write_line_plot(
+            report_dir / f"concentration_{mode}_loss.png",
+            rows,
+            [("train_loss", "train_loss"), ("val_mse", "val_mse")],
+            title=f"Concentration Loss ({mode})",
+            y_label="loss",
+        )
+        write_line_plot(
+            report_dir / f"concentration_{mode}_error.png",
+            rows,
+            [("val_rmse", "val_rmse"), ("val_mae", "val_mae")],
+            title=f"Validation Error ({mode})",
+            y_label="score error",
+        )
+        write_line_plot(
+            report_dir / f"concentration_{mode}_ordered_metrics.png",
+            rows,
+            [("val_qwk", "val_qwk"), ("val_spearman", "val_spearman"), ("val_r2", "val_r2")],
+            title=f"Validation Ordered Metrics ({mode})",
+            y_label="metric",
+        )
+    for mode, rows in situation_history.items():
+        write_csv_dicts(report_dir / f"situation_{mode}_history.csv", rows)
+        write_line_plot(
+            report_dir / f"situation_{mode}_loss.png",
+            rows,
+            [("val_loss", "val_loss")],
+            title=f"Situation Loss ({mode})",
+            y_label="loss",
+        )
+        write_line_plot(
+            report_dir / f"situation_{mode}_accuracy.png",
+            rows,
+            [("val_accuracy", "val_accuracy")],
+            title=f"Situation Accuracy ({mode})",
+            y_label="accuracy",
+        )
 
 
 # -------------------------
@@ -506,7 +629,7 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
 def train_one(
         cfg: Cfg,
         situation_state: Optional[Dict[str, torch.Tensor]] = None,
-) -> Tuple[float, Dict[str, torch.Tensor]]:
+) -> Tuple[float, Dict[str, torch.Tensor], List[Dict[str, object]]]:
     set_seed(cfg.seed)
 
     tr_items, va_items = fetch_items_window_split(cfg)
@@ -550,11 +673,16 @@ def train_one(
 
     best_mse = float("inf")
     best_state: Optional[Dict[str, torch.Tensor]] = None
+    history: List[Dict[str, object]] = []
 
     for ep in range(1, cfg.epochs + 1):
         model.train()
         total = 0.0
         n = 0
+        skipped_train_batches = 0
+        train_nonfinite_pred = 0
+        train_nonfinite_loss = 0
+        train_nonfinite_grad = 0
 
         for frames, poses, situations, y in dl_tr:
             if frames is not None:
@@ -585,6 +713,10 @@ def train_one(
             if cfg.objective == "ordinal":
                 logits = model.forward_ordinal_logits(frames, poses, situations)
                 yhat = 1.0 + torch.sigmoid(logits).sum(dim=-1)
+                if not torch.isfinite(logits).all() or not torch.isfinite(yhat).all():
+                    skipped_train_batches += 1
+                    train_nonfinite_pred += int((~torch.isfinite(yhat)).sum().item())
+                    continue
                 thresholds = torch.arange(1, 7, device=y.device).unsqueeze(0)
                 # Consensus labels may be fractional. A score of 4.5 therefore
                 # yields full targets below 4 and a 0.5 target at threshold 4.
@@ -592,32 +724,73 @@ def train_one(
                 loss = F.binary_cross_entropy_with_logits(logits, ordinal_target)
             else:
                 yhat = model(frames, poses, situations)
+                if not torch.isfinite(yhat).all():
+                    skipped_train_batches += 1
+                    train_nonfinite_pred += int((~torch.isfinite(yhat)).sum().item())
+                    continue
                 loss = loss_fn(yhat, y)
+            if not torch.isfinite(loss):
+                skipped_train_batches += 1
+                train_nonfinite_loss += int(y.size(0))
+                continue
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            if not torch.isfinite(grad_norm):
+                skipped_train_batches += 1
+                train_nonfinite_grad += int(y.size(0))
+                continue
             opt.step()
 
             total += loss.item() * y.size(0)
             n += y.size(0)
 
-        tr_mse = total / max(1, n)
+        tr_mse = total / n if n > 0 else float("nan")
         # Validation reflects autonomous operation: only predicted situation
         # probabilities are supplied when a classifier is available.
         va = evaluate(model, dl_va, cfg.device, situation_model)
+        history.append({
+            "epoch": ep,
+            "mode": cfg.mode,
+            "objective": cfg.objective,
+            "train_loss": tr_mse,
+            "train_samples": n,
+            "train_skipped_batches": skipped_train_batches,
+            "train_nonfinite_pred": train_nonfinite_pred,
+            "train_nonfinite_loss": train_nonfinite_loss,
+            "train_nonfinite_grad": train_nonfinite_grad,
+            "val_mse": va["mse"],
+            "val_rmse": va["rmse"],
+            "val_mae": va["mae"],
+            "val_r2": va["r2"],
+            "val_spearman": va["spearman"],
+            "val_qwk": va["qwk"],
+            "val_nonfinite_pred": va.get("nonfinite_pred", 0),
+            "val_nonfinite_target": va.get("nonfinite_target", 0),
+        })
 
         print(
             f"[{cfg.mode}] ep{ep:03d} train_mse={tr_mse:.4f} "
             f"val_rmse={va['rmse']:.4f} val_mae={va['mae']:.4f} "
             f"val_r2={va['r2']:.4f} val_rho={va['spearman']:.4f} val_qwk={va['qwk']:.4f} "
-            f"val_nonfinite_pred={va.get('nonfinite_pred', 0)}"
+            f"val_nonfinite_pred={va.get('nonfinite_pred', 0)} "
+            f"train_skipped={skipped_train_batches}"
         )
+
+        if not math.isfinite(va["mse"]):
+            if best_state is not None:
+                model.load_state_dict(best_state, strict=True)
+            print(
+                f"[WARN] {cfg.mode} ep{ep:03d}: validation became non-finite; "
+                "restored best weights and stopped this run."
+            )
+            break
 
         if va["mse"] < best_mse:
             best_mse = va["mse"]
             best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
 
     assert best_state is not None
-    return best_mse, best_state
+    return best_mse, best_state, history
 
 
 @torch.no_grad()
@@ -663,7 +836,7 @@ def evaluate_situation(
 
 def train_situation_one(
         cfg: Cfg, epochs: int,
-) -> Tuple[Dict[str, float], Dict[str, torch.Tensor]]:
+) -> Tuple[Dict[str, float], Dict[str, torch.Tensor], List[Dict[str, object]]]:
     set_seed(cfg.seed)
     tr_items, va_items = fetch_items_window_split(cfg)
     ds_tr = MultiSQLiteSegmentDataset(cfg, tr_items, is_train=True)
@@ -687,6 +860,7 @@ def train_situation_one(
     best_loss = float("inf")
     best_metrics: Dict[str, float] = {}
     best_state: Optional[Dict[str, torch.Tensor]] = None
+    history: List[Dict[str, object]] = []
     for epoch in range(1, epochs + 1):
         model.train()
         skipped_train_batches = 0
@@ -712,6 +886,16 @@ def train_situation_one(
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
         metrics = evaluate_situation(model, dl_va, cfg.device)
+        history.append({
+            "epoch": epoch,
+            "mode": cfg.mode,
+            "val_loss": metrics["loss"],
+            "val_accuracy": metrics["accuracy"],
+            "val_nonfinite_logits": metrics.get("nonfinite_logits", 0),
+            "val_skipped_batches": metrics.get("skipped_batches", 0),
+            "train_nonfinite_logits": train_nonfinite_logits,
+            "train_skipped_batches": skipped_train_batches,
+        })
         print(
             f"[situation:{cfg.mode}] ep{epoch:03d} "
             f"val_loss={metrics['loss']:.4f} val_acc={metrics['accuracy']:.4f} "
@@ -727,7 +911,7 @@ def train_situation_one(
             "Situation classifier did not produce a finite validation loss. "
             "Try lowering --lr, reducing transformer size/layers, or checking input features for NaN/inf."
         )
-    return best_metrics, best_state
+    return best_metrics, best_state, history
 
 
 # -------------------------
@@ -739,7 +923,7 @@ def parse_args():
         "--data_roots",
         type=str,
         required=True,
-        help="授業データrootをカンマ区切りで複数指定 例: datasets/hara,datasets/minamoto,datasets/miyazaki"
+        help="授業データrootをカンマ区切りで複数指定 例: datasets/lesson_001,datasets/lesson_002,datasets/lesson_003"
     )
     ap.add_argument(
         "--db_paths", type=str, default="",
@@ -789,6 +973,18 @@ def parse_args():
         "--situation_teacher_forcing", type=float, default=0.5,
         help="Fraction of concentration batches using true situation labels.",
     )
+    situation_feature_group = ap.add_mutually_exclusive_group()
+    situation_feature_group.add_argument(
+        "--use-situation-feature", "--use_situation_feature",
+        dest="use_situation_feature", action="store_true",
+        help="Feed situation probabilities into the concentration model (default).",
+    )
+    situation_feature_group.add_argument(
+        "--no-situation-feature", "--no_situation_feature",
+        dest="use_situation_feature", action="store_false",
+        help="Keep situation classification artifacts, but exclude it from concentration prediction.",
+    )
+    ap.set_defaults(use_situation_feature=True)
 
     ap.add_argument("--sample_strategy", type=str, default="uniform", choices=["uniform", "random"])
     ap.add_argument("--img_size", type=int, default=224)
@@ -800,6 +996,12 @@ def parse_args():
     ap.add_argument("--T", type=int, default=0, help="0なら configから自動推定（window_sec*sample_fps）")
 
     ap.add_argument("--save_name", type=str, default="best_allmodes.pt")
+    ap.add_argument(
+        "--report_dir",
+        type=str,
+        default="",
+        help="Directory for training history CSV/JSON/PNG/SVG outputs. Default: <save_name stem>_training_report",
+    )
     return ap.parse_args()
 
 
@@ -850,6 +1052,7 @@ def main():
         min_raters=args.min_raters,
         max_label_std=args.max_label_std,
         situation_teacher_forcing=args.situation_teacher_forcing,
+        use_situation_feature=args.use_situation_feature,
         mode=args.mode,  # type: ignore[arg-type]
         temporal=args.temporal,  # type: ignore[arg-type]
         epochs=args.epochs,
@@ -870,6 +1073,8 @@ def main():
     states: Dict[str, Dict[str, torch.Tensor]] = {}
     situation_results: Dict[str, Dict[str, float]] = {}
     situation_states: Dict[str, Dict[str, torch.Tensor]] = {}
+    concentration_history: Dict[str, List[Dict[str, object]]] = {}
+    situation_history: Dict[str, List[Dict[str, object]]] = {}
 
     # --mode が指定されていればそれだけ、指定がなければ3モード全部
     modes_to_run = [args.mode] if args.mode else ["image", "skeleton", "fusion"]
@@ -877,17 +1082,26 @@ def main():
     for m in modes_to_run:
         cfg = replace(base, mode=m)
         if args.situation_epochs > 0:
-            sit_metrics, sit_state = train_situation_one(cfg, args.situation_epochs)
+            sit_metrics, sit_state, sit_history = train_situation_one(cfg, args.situation_epochs)
             situation_results[m] = sit_metrics
             situation_states[m] = sit_state
-        best, state = train_one(
+            situation_history[m] = sit_history
+        best, state, history = train_one(
             cfg, situation_state=situation_states.get(m)
         )
         results[m] = best
         states[m] = state
+        concentration_history[m] = history
         print(f"BEST[{m}] mse={best:.6f}")
 
     out = repo_root / args.save_name
+    report_dir = (
+        Path(args.report_dir).resolve()
+        if args.report_dir.strip()
+        else out.with_name(f"{out.stem}_training_report")
+    )
+    write_training_artifacts(report_dir, concentration_history, situation_history)
+    print("training report:", report_dir)
 
     # 保存する state_dict は「最後に回した mode」のもの
     # （単体実行ならその mode、全実行なら fusion を優先して保存、無ければ最後）
@@ -911,6 +1125,9 @@ def main():
             "state_dict": save_state,
             "situation_results": situation_results,
             "situation_state_dicts": situation_states,
+            "training_history": concentration_history,
+            "situation_history": situation_history,
+            "training_report_dir": str(report_dir),
             "situation_labels": list(SITUATIONS),
             "feature_schema": "image_pose_situation_v4",
         },
@@ -947,3 +1164,5 @@ if __name__ == "__main__":
 # python.exe scripts\tools\merge_rater_databases.py --base-db datasets\lesson_001\db\dataset.sqlite --inputs returned_dbs\lesson_001_tanaka.sqlite returned_dbs\lesson_001_suzuki.sqlite returned_dbs\lesson_001_sato.sqlite --output merged\lesson_001_merged.sqlite --overwrite
 # マージ後
 # python.exe scripts\07_train.py --data_roots datasets\lesson_001 --db_paths merged\lesson_001_merged.sqlite --label_source consensus --mode fusion
+
+# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post

@@ -71,7 +71,7 @@ CLIでの例：
 ```bash
 WPy64-312101/python/python.exe scripts/tools/build_labeling_package.py \
   --datasets datasets/lesson_001 datasets/lesson_002 \
-  --output dist/concentration_labeler_package
+  --output dist/concentration_labeler
 ```
 
 生成される評価者版は、管理者モードとDBマージメニューが非表示になり、

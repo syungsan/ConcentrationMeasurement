@@ -467,6 +467,18 @@ def parse_args():
         help="Manual override. Omit to estimate the situation automatically.",
     )
     ap.add_argument("--situation_alpha", type=float, default=0.15)
+    situation_feature_group = ap.add_mutually_exclusive_group()
+    situation_feature_group.add_argument(
+        "--use-situation-feature", "--use_situation_feature",
+        dest="use_situation_feature", action="store_true",
+        help="Feed situation probabilities into concentration prediction.",
+    )
+    situation_feature_group.add_argument(
+        "--no-situation-feature", "--no_situation_feature",
+        dest="use_situation_feature", action="store_false",
+        help="Keep situation estimation/logging/display, but exclude it from concentration prediction.",
+    )
+    ap.set_defaults(use_situation_feature=None)
     ap.add_argument("--source", type=str, default="0", help="0(webcam) or video path")
     ap.add_argument("--data_root", type=str, default=None)
     ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -567,6 +579,12 @@ def main():
     pose_model = YOLO(str((repo_root / posecfg["model"]).resolve())) if (need_pose or draw_pose or need_mosaic or need_stable_kpt) else None
 
     ckpt, train_cfg, reg = load_ckpt(Path(args.ckpt).resolve(), mode=args.mode, device=args.device)
+    use_situation_feature = (
+        bool(train_cfg.use_situation_feature)
+        if args.use_situation_feature is None else bool(args.use_situation_feature)
+    )
+    reg.use_situation_feature = use_situation_feature
+    print(f"use_situation_feature={use_situation_feature}")
     image_roi = str(getattr(train_cfg, "image_roi", sampcfg.get("image_roi", "upper_body")))
     situation_model = None
     situation_smoother = SituationProbabilitySmoother(args.situation_alpha)

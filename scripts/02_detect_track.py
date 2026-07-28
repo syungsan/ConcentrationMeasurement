@@ -2,12 +2,13 @@ import time
 SCRIPT_STARTED_AT = time.perf_counter()
 
 from pathlib import Path
+import subprocess
+import sys
 import yaml
 
 from ultralytics import YOLO
 
 from lib.db import connect, init_db, upsert_video, ensure_track
-from lib.proxy_id_video import make_proxy_with_track_ids
 from lib.video import get_video_meta
 from lib.runroot import get_data_root, rpath
 
@@ -119,13 +120,28 @@ def main():
     conn.commit()
     print("DONE detections:", inserted, "rows. DB:", db_path)
     if proxy_video.exists():
-        proxy_id_video = proxy_video.with_name("proxy_ids.mp4")
-        drawn = make_proxy_with_track_ids(
-            db_path=db_path,
-            proxy_video=proxy_video,
-            output_video=proxy_id_video,
+        build_script = repo_root / "scripts" / "tools" / "build_proxy_id_video.py"
+        build_command = [
+            sys.executable,
+            str(build_script),
+            "--dataset", str(data_root),
+            "--label-fps", "4",
+        ]
+        manual_command = (
+            f'& "{sys.executable}" "{build_script}" '
+            f'--dataset "{data_root}" --label-fps 4'
         )
-        print("DONE proxy with IDs:", proxy_id_video, "labels:", drawn)
+        print("START proxy video with track IDs in a fresh process:")
+        try:
+            subprocess.run(build_command, check=True)
+            print("DONE proxy with IDs:", proxy_video.with_name("proxy_ids.mp4"))
+        except subprocess.CalledProcessError as exc:
+            print(
+                "[WARN] Detection results were saved, but proxy_ids.mp4 "
+                f"generation failed (exit code: {exc.returncode})."
+            )
+            print("[WARN] Run this command in a fresh terminal:")
+            print(manual_command)
     else:
         print("SKIP proxy with IDs: proxy video not found:", proxy_video)
 

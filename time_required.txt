@@ -15,6 +15,17 @@ Eurydice (Core Ultra7 265k & RTX 5070)
 05_configure_research_dataset.py
 所要時間: 00:00:03.13 (3.13秒)
 
+06_train.py
+fusion (transformer)
+所要時間: 00:27:51.33 (1671.33秒)
+fusion (gru)
+所要時間: 00:27:58.37 (1678.37秒)
+
+09_video_offline.py
+fusion (45min-transformer)
+所要時間: 08:39:15.72 (31155.72秒)
+
+
 
 Orpheus (Ryzen5 3400G & RTX3060)
 
@@ -22,28 +33,27 @@ Orpheus (Ryzen5 3400G & RTX3060)
 所要時間: 00:08:16.65 (496.65秒)
 
 02_detect_track.py
-所要時間: 01:46:45.83 (6405.83秒)
+所要時間: 01:11:13.46 (4273.46秒)
 
 03_make_segments.py
-所要時間: 00:00:03.87 (3.87秒)
+所要時間: 00:00:03.72 (3.72秒)
 
 04_extract_frames_assets.py
-所要時間: 05:21:34.95 (19294.95秒)
+所要時間: 03:25:36.49 (12336.49秒)
 
 05_configure_research_dataset.py
-
+所要時間: 00:00:03.77 (3.77秒)
 
 06_train.py
-skeleton (one-gru)
+skeleton (gru)
 所要時間: 00:35:03.43 (2103.43秒)
-fusion (one-gru)
+fusion (gru)
 所要時間: 01:51:32.66 (6692.66秒)
-fusion (one-transformer)
+fusion (transformer)
 所要時間: 01:25:08.73 (5108.73秒)
 
 09_video_offline.py
 skeleton (45min-gru)
 所要時間: 20:37:54.26 (74274.26秒)
-fusion (15min-gru)
-所要時間: 10:51:01.27 (39061.27秒)
 fusion (45min-transformer)
+所要時間: 49:00:57.16 (176457.16秒)
