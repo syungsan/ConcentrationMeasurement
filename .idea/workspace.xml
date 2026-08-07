@@ -5,25 +5,45 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="fd1c86c7-e4d4-4999-aedd-4c1c4bebbb85" name="変更" comment="">
-      <change afterPath="$PROJECT_DIR$/docs/current_task_summary_2.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/.modules.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/.modules.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/.pnpm-workspace-state-v1.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/.pnpm-workspace-state-v1.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/.pnpm/lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/.pnpm/lock.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/@oai/artifact-tool/node_modules/.package-map.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/@oai/artifact-tool/node_modules/.pnpm-workspace-state-v1.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/@oai/artifact-tool/node_modules/.pnpm-workspace-state-v1.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/@oai/artifact-tool/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/@oai/artifact-tool/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/browsers.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/browsers.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/protocol.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/protocol.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/structs.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/structs.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/types.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright-core/types/types.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright/types/test.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright/types/test.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/playwright/types/testReporter.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/playwright/types/testReporter.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/node_modules/sax/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/node_modules/sax/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.modules.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.modules.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.pnpm-workspace-state-v1.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.pnpm-workspace-state-v1.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.pnpm/lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/.pnpm/lock.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/@oai/artifact-tool/node_modules/.package-map.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/@oai/artifact-tool/node_modules/.pnpm-workspace-state-v1.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/@oai/artifact-tool/node_modules/.pnpm-workspace-state-v1.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/@oai/artifact-tool/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/@oai/artifact-tool/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/browsers.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/browsers.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/protocol.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/protocol.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/structs.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/structs.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/types.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright-core/types/types.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/types/test.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/types/test.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/types/testReporter.d.ts" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/playwright/types/testReporter.d.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/sax/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/.codex_work/spreadsheet_inspect/node_modules/sax/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/RESEARCH_WORKFLOW.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/concentration_measurement.iml" beforeDir="false" afterPath="$PROJECT_DIR$/concentration_measurement.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/current_task_summary.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/labeling_workflow_memo.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/labeling_workflow_memo.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/launcher.py" beforeDir="false" afterPath="$PROJECT_DIR$/launcher.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/02_detect_track.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/02_detect_track.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/commands.txt" beforeDir="false" afterPath="$PROJECT_DIR$/commands.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/current_task_summary_1.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/current_task_summary_1.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/07_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/07_train.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/08_realtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/08_realtime.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/09_video_offline.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/09_video_offline.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/lib/model_defs.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/model_defs.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/lib/research_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/research_schema.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/test_research_schema.py" beforeDir="false" afterPath="$PROJECT_DIR$/tests/test_research_schema.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/time_required.txt" beforeDir="false" afterPath="$PROJECT_DIR$/time_required.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,23 +62,23 @@
   </component>
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.8625306195024707" />
-      <entry key="MS500" value="3.667367372951725" />
-      <entry key="S2" value="5.56832644779331" />
-      <entry key="S5" value="7.430121217418015" />
-      <entry key="S10" value="8.57447783664064" />
-      <entry key="S30" value="9.841381666540318" />
-      <entry key="S60" value="10.342568333768023" />
-      <entry key="M2" value="10.647284288572504" />
-      <entry key="M5" value="10.852453592811917" />
-      <entry key="M10" value="10.925085421528927" />
-      <entry key="M15" value="10.949800086180495" />
-      <entry key="M30" value="10.98000813041315" />
-      <entry key="H1" value="11.287503954002439" />
-      <entry key="H2" value="13.647867482860995" />
-      <entry key="H4" value="21.285565422900433" />
-      <entry key="D1" value="90.70273654678286" />
-      <entry key="W1" value="141.380931129895" />
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.000001114246608" />
+      <entry key="S5" value="1.0041571196861026" />
+      <entry key="S10" value="1.0644757294344365" />
+      <entry key="S30" value="1.4009886573667" />
+      <entry key="S60" value="1.633236941590276" />
+      <entry key="M2" value="1.7978406510688012" />
+      <entry key="M5" value="2.3417215868604693" />
+      <entry key="M10" value="4.491940798028164" />
+      <entry key="M15" value="6.556920963570233" />
+      <entry key="M30" value="10.282487561333594" />
+      <entry key="H1" value="13.370041008274855" />
+      <entry key="H2" value="17.220384804884908" />
+      <entry key="H4" value="25.482432638749135" />
+      <entry key="D1" value="95.54221886292362" />
+      <entry key="W1" value="147.12507671905442" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
@@ -80,23 +100,23 @@
       <entry key="W1" value="0.0" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="1.7764408353552639" />
-      <entry key="MS500" value="3.6325551127179287" />
-      <entry key="S2" value="5.554769369810026" />
-      <entry key="S5" value="7.422779382536665" />
-      <entry key="S10" value="8.570166257067545" />
-      <entry key="S30" value="9.839623618198269" />
-      <entry key="S60" value="10.341609471364874" />
-      <entry key="M2" value="10.646778746875796" />
-      <entry key="M5" value="10.85224408032638" />
-      <entry key="M10" value="10.924979351026394" />
-      <entry key="M15" value="10.949729072653055" />
-      <entry key="M30" value="10.979972438252918" />
-      <entry key="H1" value="11.28748512535979" />
-      <entry key="H2" value="13.647854027284897" />
-      <entry key="H4" value="21.285543387169138" />
-      <entry key="D1" value="90.70266878168444" />
-      <entry key="W1" value="141.3809135936144" />
+      <entry key="MS100" value="0.9265880618903709" />
+      <entry key="MS500" value="0.9848664428955506" />
+      <entry key="S2" value="0.9961960436171727" />
+      <entry key="S5" value="1.0026052150292222" />
+      <entry key="S10" value="1.0634949428675997" />
+      <entry key="S30" value="1.4002808171229948" />
+      <entry key="S60" value="1.632751517469981" />
+      <entry key="M2" value="1.797551090068418" />
+      <entry key="M5" value="2.341527899904007" />
+      <entry key="M10" value="4.491685246086344" />
+      <entry key="M15" value="6.556649605920614" />
+      <entry key="M30" value="10.282261280894907" />
+      <entry key="H1" value="13.369892408491081" />
+      <entry key="H2" value="17.22029617697475" />
+      <entry key="H4" value="25.482370951499348" />
+      <entry key="D1" value="95.54214465510823" />
+      <entry key="W1" value="147.1250581643972" />
     </decayedShown>
   </component>
   <component name="ProjectColorInfo">{
@@ -108,36 +128,36 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.launcher.executor": "Run",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "junie.onboarding.icon.badge.shown": "true",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "D:/MyProjects/python_projects/concentration_measurement/concentration_measurement",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.jshint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.jshint": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "project.structure.last.edited": "SDK",
-    "project.structure.proportion": "0.15",
-    "project.structure.side.proportion": "0.2",
-    "run.code.analysis.last.selected.profile": "pProject Default",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.launcher.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/MyProjects/python_projects/concentration_measurement/concentration_measurement&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.jshint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.jshint&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;SDK&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
+    &quot;run.code.analysis.last.selected.profile&quot;: &quot;pProject Default&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\MyProjects\python\concentration_measurement\concentration_measurement" />
@@ -186,6 +206,12 @@
       <workItem from="1785131886186" duration="4112000" />
       <workItem from="1785136835212" duration="83000" />
       <workItem from="1785164877638" duration="620000" />
+      <workItem from="1785236732509" duration="2149000" />
+      <workItem from="1785239302937" duration="2013000" />
+      <workItem from="1785375129598" duration="2173000" />
+      <workItem from="1785559548637" duration="537000" />
+      <workItem from="1785910692586" duration="762000" />
+      <workItem from="1786003518526" duration="799000" />
     </task>
     <servers />
   </component>

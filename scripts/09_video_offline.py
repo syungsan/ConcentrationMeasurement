@@ -130,12 +130,15 @@ COCO17_EDGES: List[Tuple[int, int]] = [
 # -------------------------
 # Drawing helpers
 # -------------------------
-def draw_label(img, x, y, text, *, font_scale=1.2, thickness=3):
+def draw_label(
+        img, x, y, text, *, font_scale=1.2, thickness=3,
+        text_color=(255, 255, 255), bg_color=(0, 0, 0),
+):
     font = cv2.FONT_HERSHEY_SIMPLEX
     (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
     x = int(x); y = int(y)
-    cv2.rectangle(img, (x, y - th - baseline - 8), (x + tw + 10, y + 6), (0, 0, 0), -1)
-    cv2.putText(img, text, (x + 5, y - 5), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    cv2.rectangle(img, (x, y - th - baseline - 8), (x + tw + 10, y + 6), bg_color, -1)
+    cv2.putText(img, text, (x + 5, y - 5), font, font_scale, text_color, thickness, cv2.LINE_AA)
 
 
 def draw_skeleton(
@@ -1046,16 +1049,25 @@ def main():
             cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
 
             show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
-            score_text = (
-                str(clamp_1to7(float(st.score)))
-                if st.ready else f"warming {max(len(img_buf.get(tid, ())), len(pose_buf.get(tid, ())))}/{T}"
-            )
-            draw_label(
-                frame, x1i, y1i,
-                f"ID:{int(show_id)}  score:{score_text}",
-                font_scale=float(args.label_scale),
-                thickness=int(args.label_thick),
-            )
+            if st.ready:
+                draw_label(
+                    frame, x1i, y1i,
+                    f"ID:{int(show_id)}  score:{clamp_1to7(float(st.score))}",
+                    font_scale=float(args.label_scale),
+                    thickness=int(args.label_thick),
+                )
+            else:
+                warm_count = max(
+                    len(img_buf.get(tid, ())), len(pose_buf.get(tid, ()))
+                )
+                draw_label(
+                    frame, x1i, y1i,
+                    f"ID:{int(show_id)}  warm-up {warm_count}/{T}",
+                    font_scale=max(0.50, float(args.label_scale) * 0.66),
+                    thickness=1,
+                    text_color=(180, 180, 180),
+                    bg_color=(35, 35, 35),
+                )
 
             if args.mosaic_eyes and st.kpts_frame is not None:
                 mosaic_eyes_from_kpts(

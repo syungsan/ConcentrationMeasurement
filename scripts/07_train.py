@@ -990,7 +990,7 @@ def parse_args():
     ap.add_argument("--img_size", type=int, default=224)
     ap.add_argument("--image_roi", type=str, default="", choices=["", "upper_body", "full_body"])
     ap.add_argument(
-        "--fusion_image_scale", type=float, default=0.25,
+        "--fusion_image_scale", type=float, default=0.5,
         help="Fusion時のRGB特徴の重み。skeleton中心なら0.1〜0.35推奨。",
     )
     ap.add_argument("--T", type=int, default=0, help="0なら configから自動推定（window_sec*sample_fps）")
@@ -1157,7 +1157,7 @@ if __name__ == "__main__":
 # python scripts\07_train.py --data_roots datasets\lesson_train --db_paths merged\lesson_train.sqlite --label_source consensus --split_unit window --mode skeleton --save_name models\pilot_class.pt
 # 評価者が1名だけの場合：
 # python scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode skeleton --save_name models\pilot_class.pt
-# python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode fusion --fusion_image_scale 0.25 --save_name models\pilot_fusion_stable.pt
+# python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pilot_fusion_stable.pt
 
 # --temporal transformer
 # 複数評価者の複数DBを使う場合の前処理：

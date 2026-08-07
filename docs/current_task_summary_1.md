@@ -154,7 +154,7 @@ ID表示は、頭の少し上に薄く表示されます。
   --raters evaluator01 `
   --split_unit window `
   --mode fusion `
-  --fusion_image_scale 0.25 `
+  --fusion_image_scale 0.5 `
   --include_pilot_post `
   --save_name models\normal_plus_pilot_post_fusion.pt
 ```

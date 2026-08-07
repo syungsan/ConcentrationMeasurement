@@ -45,7 +45,7 @@ python scripts/07_train.py \
   --db_paths merged/lesson_001_merged.sqlite \
   --label_source consensus \
   --mode fusion \
-  --fusion_image_scale 0.25
+  --fusion_image_scale 0.5
 ```
 
 `fusion` はskeletonを主入力、RGBを補助入力として扱います。RGBモデル入力は既定で頭〜上半身ROIに切られ、保存cropは採点確認用に全身のまま残ります。
