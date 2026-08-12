@@ -990,7 +990,7 @@ def parse_args():
     ap.add_argument("--img_size", type=int, default=224)
     ap.add_argument("--image_roi", type=str, default="", choices=["", "upper_body", "full_body"])
     ap.add_argument(
-        "--fusion_image_scale", type=float, default=0.5,
+        "--fusion_image_scale", type=float, default=0.25,
         help="Fusion時のRGB特徴の重み。skeleton中心なら0.1〜0.35推奨。",
     )
     ap.add_argument("--T", type=int, default=0, help="0なら configから自動推定（window_sec*sample_fps）")

@@ -42,6 +42,7 @@ QPushButton[primary="true"] {
   padding: 7px 10px;
   border: 2px solid #2563eb;
   background: #dbeafe;
+  color: #111827;
   font-weight: 800;
 }
 
@@ -64,6 +65,22 @@ QComboBox {
 QComboBox QAbstractItemView { background: #ffffff; color: #111827; }
 
 QCheckBox { color: #111827; }
+
+QTabWidget::pane {
+  background: #ffffff;
+  border: 1px solid #9ca3af;
+}
+QTabBar::tab {
+  background: #e5e7eb;
+  color: #111827;
+  border: 1px solid #9ca3af;
+  padding: 6px 12px;
+}
+QTabBar::tab:selected {
+  background: #dbeafe;
+  color: #111827;
+  font-weight: 700;
+}
 
 QSlider::groove:horizontal { background: #d1d5db; height: 6px; border-radius: 3px; }
 QSlider::handle:horizontal { background: #2563eb; width: 14px; margin: -6px 0; border-radius: 7px; }
@@ -895,7 +912,7 @@ class LabelFastApp(QWidget):
         # --- Slider ---
         self.pos_slider = QSlider(Qt.Horizontal)
         self.pos_slider.sliderMoved.connect(self.seek)
-        self.pos_slider.sliderReleased.connect(self.load_window_from_current_time)
+        self.pos_slider.sliderReleased.connect(self.load_window_from_slider)
         self.player.durationChanged.connect(self.on_duration)
         self.player.positionChanged.connect(self.on_position)
 
@@ -952,11 +969,13 @@ class LabelFastApp(QWidget):
         self.cb_only_unlabeled.setChecked(False)
         self.cb_only_unlabeled.stateChanged.connect(self.refresh_window_table)
 
-        self.cb_prioritize_current_situation = QCheckBox("この状況の未入力を優先して回る")
-        self.cb_prioritize_current_situation.setChecked(True)
+        self.cb_prioritize_current_situation = QCheckBox(
+            "同じ状況を優先（離れた区間へ移動する場合あり）"
+        )
+        self.cb_prioritize_current_situation.setChecked(False)
 
         self.cb_hide_skipped = QCheckBox("スキップ区間を隠す")
-        self.cb_hide_skipped.setChecked(True)
+        self.cb_hide_skipped.setChecked(False)
         self.cb_hide_skipped.stateChanged.connect(self.refresh_window_table)
 
         self.btn_refresh_list = QPushButton("一覧更新")
@@ -1605,6 +1624,8 @@ class LabelFastApp(QWidget):
     def enforce_loop(self):
         if not self.loop_btn.isChecked():
             return
+        if self.pos_slider.isSliderDown():
+            return
         if not self.current_window:
             return
         t_start, t_end = self.current_window
@@ -1809,6 +1830,7 @@ class LabelFastApp(QWidget):
 
         display_rows = []
         for i, (t0, t1) in enumerate(self.windows):
+            is_current = i == self.window_idx
             st = stats.get((t0, t1))
             if st is None:
                 if r:
@@ -1842,10 +1864,10 @@ class LabelFastApp(QWidget):
             labeled = st["labeled"]
             is_skipped = bool(r) and self.is_window_skipped(r, t0, t1)
 
-            if hide_skipped and is_skipped:
+            if hide_skipped and is_skipped and not is_current:
                 continue
 
-            if only_unlabeled and r:
+            if only_unlabeled and r and not is_current:
                 if is_skipped:
                     continue
                 if labeled is None or labeled >= total:
@@ -1885,6 +1907,7 @@ class LabelFastApp(QWidget):
 
         self.win_table.resizeColumnsToContents()
         self.win_table.setSortingEnabled(True)
+        self.focus_current_window_row()
 
     def refresh_situation_table(self):
         rows = self.cur.execute("""
@@ -1917,6 +1940,31 @@ class LabelFastApp(QWidget):
         self.win_table.resizeColumnsToContents()
         self.win_table.horizontalHeader().setStretchLastSection(True)
         self.win_table.setSortingEnabled(True)
+        self.focus_current_window_row()
+
+    def focus_current_window_row(self):
+        """Select, emphasize, and reveal the row for the window being edited."""
+        if self.window_idx < 0:
+            return
+        for row in range(self.win_table.rowCount()):
+            index_item = self.win_table.item(row, 0)
+            if index_item is None or index_item.data(Qt.UserRole) != self.window_idx:
+                continue
+            highlight = QBrush(QColor(254, 240, 138))
+            for column in range(self.win_table.columnCount()):
+                item = self.win_table.item(row, column)
+                if item is None:
+                    continue
+                item.setBackground(highlight)
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            self.win_table.setCurrentCell(row, 0)
+            self.win_table.selectRow(row)
+            self.win_table.scrollToItem(
+                index_item, QAbstractItemView.PositionAtCenter
+            )
+            return
 
     def on_window_table_clicked(self, row: int, col: int):
         it = self.win_table.item(row, 0)
@@ -1950,9 +1998,11 @@ class LabelFastApp(QWidget):
                                SELECT 1
                                FROM segments s
                                JOIN windows w ON w.id=s.window_id
-                                         LEFT JOIN labels l ON l.segment_id = s.id AND l.rater = ?
-                               WHERE w.t_start=? AND w.t_end=? AND l.id IS NULL
-                                   LIMIT 1
+                               LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
+                               WHERE ((w.t_start+w.t_end)/2.0)>=?
+                                 AND ((w.t_start+w.t_end)/2.0)<?
+                                 AND l.id IS NULL
+                               LIMIT 1
                                """, (rater, float(t0), float(t1))).fetchone()
         return row is not None
 
@@ -1960,8 +2010,10 @@ class LabelFastApp(QWidget):
         row = self.cur.execute("""
                                SELECT 1
                                FROM windows w
-                               WHERE w.t_start=? AND w.t_end=? AND COALESCE(w.situation,'') = ?
-                                    LIMIT 1
+                               WHERE ((w.t_start+w.t_end)/2.0)>=?
+                                 AND ((w.t_start+w.t_end)/2.0)<?
+                                 AND COALESCE(w.situation,'')=?
+                               LIMIT 1
                                """, (float(t0), float(t1), situation)).fetchone()
         return row is not None
 
@@ -2051,11 +2103,17 @@ class LabelFastApp(QWidget):
         self.refresh_info()
         self.refresh_window_table()
 
+    def load_window_from_slider(self):
+        self.load_window_at_time(self.pos_slider.value() / 1000.0)
+
     def load_window_from_current_time(self):
+        self.load_window_at_time(self.player.position() / 1000.0)
+
+    def load_window_at_time(self, t: float):
         if not self.ensure_ready():
             return
         r = self.rater()
-        t = self.player.position() / 1000.0
+        seek_position_ms = int(float(t) * 1000)
         if self.task == "rating":
             match = next(
                 ((index, window) for index, window in enumerate(self.windows)
@@ -2065,6 +2123,7 @@ class LabelFastApp(QWidget):
             if match is not None:
                 self.window_idx, (t0, t1) = match
                 self.load_window(t0, t1, r, keep_play_state=True)
+                self.player.setPosition(seek_position_ms)
                 return
         row = self.cur.execute("""
                                SELECT w.t_start, w.t_end
@@ -2082,6 +2141,7 @@ class LabelFastApp(QWidget):
         except ValueError:
             pass
         self.load_window(t0, t1, r, keep_play_state=True)
+        self.player.setPosition(seek_position_ms)
 
     # ---------------- tiles/window rendering ----------------
     def clear_tiles(self):
@@ -2123,6 +2183,7 @@ class LabelFastApp(QWidget):
             if was_playing:
                 self.player.play()
             self.refresh_info()
+            self.focus_current_window_row()
             return
 
         all_seg_rows = self.cur.execute("""

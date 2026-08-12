@@ -52,7 +52,7 @@ class Cfg:
     img_feat: int = 256
     imagenet_pretrain: bool = True
     image_roi: Literal["upper_body", "full_body"] = "upper_body"
-    fusion_image_scale: float = 0.5
+    fusion_image_scale: float = 0.25
 
     # pose
     K: int = 17

@@ -1,79 +1,60 @@
-# Concentration Measurement (Offline)
+# Concentration Measurement
 
-介入研究向けのデータ区分、盲検採点、学校単位検証、教室集約、療法前後監査については [RESEARCH_WORKFLOW.md](RESEARCH_WORKFLOW.md) を参照してください。
+授業動画から集中度を推定・分析するPythonプロジェクトです。このREADMEでは、開発環境の導入方法だけを説明します。操作方法や分析手順は[`docs`](docs/)を参照してください。
 
-## 1) Setup
-- Python 3.10+ 推奨
-- ffmpeg をインストール（proxy作成に使用）
+## 動作環境
 
-```bash
-pip install -r requirements.txt
+- Windows 10 / 11
+- Python 3.12（同梱WinPythonを推奨）
+- NVIDIA GPU（学習・推論を高速化する場合）
+- ffmpeg（動画の変換・音声結合に使用。リポジトリの`ffmpeg/bin`も利用可能）
+
+## 同梱WinPythonを使う方法
+
+リポジトリに`WPy64-312101`が含まれている場合、追加のPython環境を作成せずに利用できます。
+
+```powershell
+.\WPy64-312101\python\python.exe --version
+.\WPy64-312101\python\python.exe -m pip install -r requirements.txt
 ```
 
-## Labeling workflow
+PyTorchをGPUで使用する場合は、利用するCUDA環境に合うパッケージをインストールします。CUDA 12.8向けの例:
 
-通常はプロジェクト直下のランチャーを起動します。
-
-```bash
-WPy64-312101/python/python.exe launcher.py
+```powershell
+.\WPy64-312101\python\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 ```
 
-1. 代表者が共有状況を設定し、全区間をロックします。
+## 仮想環境を作る方法
 
-```bash
-python scripts/06_label_gui.py --dataset datasets/lesson_001 --task situation
+システムのPython 3.12を使う場合:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-2. 各評価者が同じDBに集中度を入力します。
+PyTorchはCPU版または使用するCUDA環境に合う版を別途インストールしてください。
 
-```bash
-python scripts/06_label_gui.py --dataset datasets/lesson_001 --task rating
+## 導入確認
+
+主要モジュールを読み込めることを確認します。
+
+```powershell
+.\WPy64-312101\python\python.exe -c "import cv2, numpy, pandas, PySide6, torch, ultralytics; print('OK')"
 ```
 
-## Collecting evaluator databases
+ラベラーのランチャーを起動できれば導入完了です。
 
-- 評価者は採点GUIを終了してから `db/dataset.sqlite` を管理者へ渡します。
-- 管理者はランチャーで対象datasetを選択し、「管理」→「評価者DBをマージ」を実行します。
-- マージ後DBには評価者別の `labels` と平均値の `label_consensus` が作成されます。
-- 同名評価者の矛盾するラベルや、異なるdatasetのDBはエラーとなります。
-
-平均ラベルで学習する例：
-
-```bash
-python scripts/07_train.py \
-  --data_roots datasets/lesson_001 \
-  --db_paths merged/lesson_001_merged.sqlite \
-  --label_source consensus \
-  --mode fusion \
-  --fusion_image_scale 0.5
+```powershell
+.\launch_labeler.bat
 ```
 
-`fusion` はskeletonを主入力、RGBを補助入力として扱います。RGBモデル入力は既定で頭〜上半身ROIに切られ、保存cropは採点確認用に全身のまま残ります。
+## ドキュメント
 
-## Proxy video with subtle track IDs
-
-`02_detect_track.py` 実行後、`videos/proxy_ids.mp4` が自動生成されます。`06_label_gui.py` はこのファイルがあれば通常の `proxy.mp4` より優先して再生します。再生中にDBへ問い合わせないため、人物ID表示によるカクつきを避けられます。
-
-既存の `detections` からID付きproxyだけ作り直す場合：
-
-```bash
-python scripts/tools/build_proxy_id_video.py --dataset datasets/lesson_001 --label-fps 4
-```
-
-## Building evaluator packages
-
-共有状況を全区間で確定・ロックした後、管理者版ランチャーで
-配布したいdatasetをCtrlまたはShiftで複数選択し、
-「管理」→「評価者用パッケージを作成」から生成できます。
-
-CLIでの例：
-
-```bash
-WPy64-312101/python/python.exe scripts/tools/build_labeling_package.py \
-  --datasets datasets/lesson_001 datasets/lesson_002 \
-  --output dist/concentration_labeler
-```
-
-生成される評価者版は、管理者モードとDBマージメニューが非表示になり、
-評価者名は配布先で初回起動時に入力します。採点後はパッケージ内の
-`datasets/<dataset>/db/dataset.sqlite` を回収します。
+- [ラベリングとデータセット運用](docs/LABELING_GUIDE.md)
+- [学習・評価・推論](docs/MODEL_WORKFLOW.md)
+- [研究設計・集計・AB解析](docs/RESEARCH_ANALYSIS.md)
+- [評価指標](docs/METRICS_GUIDE.md)
+- [トラブルシューティング](docs/TROUBLESHOOTING.md)
