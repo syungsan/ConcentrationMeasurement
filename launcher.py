@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent
 PYTHON_EXE = ROOT / "WPy64-312101" / "python" / "python.exe"
 LABEL_GUI = ROOT / "scripts" / "06_label_gui.py"
 MERGE_SCRIPT = ROOT / "scripts" / "tools" / "merge_rater_databases.py"
-PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_packagepy"
+PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_package.py"
 DATASETS_DIR = ROOT / "datasets"
 PACKAGE_CONFIG_PATH = ROOT / "package_config.json"
 
@@ -77,7 +77,7 @@ class Launcher(tk.Tk):
         if self.evaluator_only:
             self.title("集中度採点 評価者用ランチャー")
         self.mode = tk.StringVar(value="evaluator")
-        self.name = tk.StringVar(value=str(self.package_config.get("evaluator_name", "")))
+        self.name = tk.StringVar(value="")
         self.status = tk.StringVar(value="datasetを選択してください。")
         self.entries: dict[str, DatasetEntry] = {}
 
@@ -119,8 +119,6 @@ class Launcher(tk.Tk):
         self.name_label.pack(side=tk.LEFT)
         self.name_entry = ttk.Entry(identity, textvariable=self.name, width=36)
         self.name_entry.pack(side=tk.LEFT, padx=10)
-        if self.evaluator_only and self.name.get().strip():
-            self.name_entry.configure(state="readonly")
 
         dataset_box = ttk.LabelFrame(outer, text="datasetsフォルダ", padding=10)
         dataset_box.pack(fill=tk.BOTH, expand=True)
@@ -212,16 +210,6 @@ class Launcher(tk.Tk):
             label = "代表者名" if self.mode.get() == "administrator" else "評価者名"
             messagebox.showinfo(label, f"{label}を入力してください。")
             return
-        if self.evaluator_only and not str(
-            self.package_config.get("evaluator_name", "")
-        ).strip():
-            self.package_config["evaluator_name"] = person_name
-            PACKAGE_CONFIG_PATH.write_text(
-                json.dumps(self.package_config, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            self.name_entry.configure(state="readonly")
-
         task = "situation" if self.mode.get() == "administrator" else "rating"
         dataset_arg = entry.root.relative_to(ROOT).as_posix()
         command = [
