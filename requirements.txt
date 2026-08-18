@@ -1,4 +1,4 @@
-# python 3.12
+# python 3.12.10
 ultralytics
 opencv-python==4.10.0.84
 numpy
@@ -11,5 +11,5 @@ seaborn
 scikit-learn
 
 # PyTorch
-# CUDA 12.8.1
+# CUDA 12.8.2
 # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
