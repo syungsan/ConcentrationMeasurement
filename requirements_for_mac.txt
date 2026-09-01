@@ -7,3 +7,5 @@ PySide6
 PyYAML
 pandas
 openpyxl
+insightface
+onnxruntime-gpu

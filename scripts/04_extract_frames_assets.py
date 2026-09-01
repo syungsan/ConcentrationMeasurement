@@ -11,6 +11,11 @@ import numpy as np
 from ultralytics import YOLO
 
 from lib.db import connect, init_db
+from lib.face_exclusion import (
+    FaceDbMatcher,
+    decide_face_exclusion,
+    update_auto_exclusion,
+)
 from lib.video import read_frame_at
 from lib.runroot import get_data_root, rpath  # 既に追加済みの想定
 
@@ -41,6 +46,32 @@ def posix_rel(path: Path, base: Path) -> str:
     return path.relative_to(base).as_posix()
 
 
+def print_progress(
+    completed: int,
+    total: int,
+    started_at: float,
+    *,
+    auto_excluded: int,
+    force: bool = False,
+) -> None:
+    """セグメント処理の進捗、速度、推定残り時間を表示する。"""
+    if total <= 0:
+        return
+    interval = max(1, total // 100)
+    if not force and completed % interval != 0:
+        return
+    elapsed = max(0.0, time.perf_counter() - started_at)
+    rate = completed / elapsed if elapsed > 0 else 0.0
+    remaining = (total - completed) / rate if rate > 0 else 0.0
+    percent = completed * 100.0 / total
+    print(
+        f"[PROGRESS] {completed}/{total} ({percent:5.1f}%) "
+        f"elapsed={elapsed:,.1f}s eta={remaining:,.1f}s "
+        f"rate={rate:.2f} segments/s excluded={auto_excluded}",
+        flush=True,
+    )
+
+
 def main():
     cfg = yaml.safe_load((repo_root / "config.yaml").read_text(encoding="utf-8"))
 
@@ -60,6 +91,20 @@ def main():
 
     posecfg = cfg["pose"]
     pose_model = YOLO(str(rpath(repo_root, posecfg["model"])))  # model は repo_root 側に置く運用が多いので repo_root
+
+    facecfg = cfg.get("face_exclusion", {})
+    face_matcher = None
+    face_max_frames = int(facecfg.get("max_frames", 8))
+    if bool(facecfg.get("enabled", False)):
+        face_db_path = rpath(repo_root, str(facecfg.get("db_path", "models/face_db.npz")))
+        if not face_db_path.exists():
+            raise FileNotFoundError(f"face DB not found: {face_db_path}")
+        face_matcher = FaceDbMatcher(
+            face_db_path,
+            threshold=float(facecfg.get("similarity_threshold", 0.50)),
+            device=str(facecfg.get("device", "cuda")),
+        )
+        print(f"face exclusion: enabled, DB={face_db_path}")
 
     conn = connect(db_path)
     init_db(conn)
@@ -93,20 +138,56 @@ def main():
     print("segments:", len(segs), "db:", db_path)
 
     dt = 1.0 / sample_fps
+    auto_excluded = 0
+    progress_started_at = time.perf_counter()
 
     for idx, (seg_id, tid, t_start, t_end) in enumerate(segs):
         seg_id = int(seg_id); tid = int(tid)
         t_start = float(t_start); t_end = float(t_end)
 
-        # 既に生成済みならスキップ
-        exists = cur.execute("SELECT 1 FROM segment_frames WHERE segment_id=? LIMIT 1", (seg_id,)).fetchone()
-        if exists:
+        existing_rows = cur.execute("""
+            SELECT crop_path FROM segment_frames
+            WHERE segment_id=? AND crop_path IS NOT NULL
+            ORDER BY t LIMIT ?
+        """, (seg_id, face_max_frames)).fetchall()
+        if existing_rows:
+            if face_matcher is not None:
+                images = []
+                for (stored_path,) in existing_rows:
+                    path = rpath(data_root, str(stored_path))
+                    image = cv2.imread(str(path))
+                    if image is not None:
+                        images.append(image)
+                matches = [face_matcher.match(image)[0] for image in images]
+                excluded, name, count, ratio = decide_face_exclusion(
+                    matches,
+                    int(facecfg.get("min_matches", 2)),
+                    float(facecfg.get("min_match_ratio", 0.50)),
+                )
+                update_auto_exclusion(
+                    conn, seg_id, excluded=excluded, matched_name=name,
+                )
+                if excluded:
+                    auto_excluded += 1
+                    print(
+                        f"[FACE EXCLUDE] segment={seg_id} track={tid} "
+                        f"name={name} matches={count}/{len(matches)} ratio={ratio:.2f}"
+                    )
+                conn.commit()
+            print_progress(
+                idx + 1,
+                len(segs),
+                progress_started_at,
+                auto_excluded=auto_excluded,
+                force=(idx + 1 == len(segs)),
+            )
             continue
 
         n_steps = max(1, int(math.floor((t_end - t_start) * sample_fps)))
         ts = [t_start + (k + 0.5) * dt for k in range(n_steps)]
         ts = [min(max(t, t_start), t_end) for t in ts]
 
+        face_images: list[np.ndarray] = []
         for t in ts:
             det = cur.execute("""
                               SELECT frame_idx, x1,y1,x2,y2, conf, t
@@ -132,6 +213,8 @@ def main():
 
             crop = frame[y1i:y2i, x1i:x2i].copy()
             crop = resize_long_side(crop, crop_long)
+            if len(face_images) < face_max_frames:
+                face_images.append(crop)
 
             # 保存ファイル名（小数の揺れ対策でミリ秒相当に丸め）
             t_key = int(round(t * 1000))
@@ -167,13 +250,38 @@ def main():
                             crop_rel, pose_rel
                         ))
 
+        if face_matcher is not None:
+            matches = [face_matcher.match(image)[0] for image in face_images]
+            excluded, name, count, ratio = decide_face_exclusion(
+                matches,
+                int(facecfg.get("min_matches", 2)),
+                float(facecfg.get("min_match_ratio", 0.50)),
+            )
+            update_auto_exclusion(
+                conn, seg_id, excluded=excluded, matched_name=name,
+            )
+            if excluded:
+                auto_excluded += 1
+                print(
+                    f"[FACE EXCLUDE] segment={seg_id} track={tid} "
+                    f"name={name} matches={count}/{len(matches)} ratio={ratio:.2f}"
+                )
+
         conn.commit()
-        if idx % 50 == 0:
-            print(f"processed segments: {idx}/{len(segs)}")
+        print_progress(
+            idx + 1,
+            len(segs),
+            progress_started_at,
+            auto_excluded=auto_excluded,
+            force=(idx + 1 == len(segs)),
+        )
 
     cap.release()
     conn.commit()
-    print("DONE extract segment_frames. DB:", db_path)
+    print(
+        "DONE extract segment_frames. DB:", db_path,
+        "auto-excluded segments:", auto_excluded,
+    )
 
 
 if __name__ == "__main__":

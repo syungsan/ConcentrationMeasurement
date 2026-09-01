@@ -174,6 +174,15 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
 
     try:
         out.execute("""
+            CREATE TABLE IF NOT EXISTS excluded_segments (
+              segment_id INTEGER PRIMARY KEY,
+              reason TEXT NOT NULL DEFAULT 'adult',
+              excluded_by TEXT,
+              created_at TEXT DEFAULT (datetime('now')),
+              FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
+            )
+        """)
+        out.execute("""
             CREATE TABLE IF NOT EXISTS merge_sources (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               source_name TEXT NOT NULL,
@@ -260,6 +269,27 @@ def merge(base_db: Path, inputs: list[Path], output: Path, overwrite: bool) -> d
                             "SELECT name FROM sqlite_master WHERE type='table'"
                         )
                     }
+                    if "excluded_segments" in source_tables:
+                        excluded_rows = src.execute("""
+                            SELECT segment_id, reason, excluded_by, created_at
+                            FROM excluded_segments
+                        """).fetchall()
+                        for source_segment, reason, excluded_by, created_at in excluded_rows:
+                            key = reverse_src.get(int(source_segment))
+                            if key is None:
+                                continue
+                            destination_segment = base_segments[key]
+                            out.execute("""
+                                INSERT INTO excluded_segments(
+                                  segment_id, reason, excluded_by, created_at
+                                ) VALUES(?,?,?,?)
+                                ON CONFLICT(segment_id) DO UPDATE SET
+                                  reason=excluded.reason,
+                                  excluded_by=excluded.excluded_by
+                            """, (
+                                destination_segment, reason or "adult",
+                                excluded_by, created_at,
+                            ))
                     if "label_observations" in source_tables:
                         observation_columns = {
                             str(item[1]) for item in src.execute(

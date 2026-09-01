@@ -31,24 +31,29 @@ class UnlabeledNavigationTests(unittest.TestCase):
         self.conn.executescript("""
             CREATE TABLE windows (
                 id INTEGER PRIMARY KEY,
+                video_id INTEGER NOT NULL,
                 t_start REAL NOT NULL,
                 t_end REAL NOT NULL,
                 situation TEXT
             );
             CREATE TABLE segments (
                 id INTEGER PRIMARY KEY,
-                window_id INTEGER NOT NULL
+                window_id INTEGER NOT NULL,
+                track_id INTEGER NOT NULL
             );
             CREATE TABLE labels (
                 id INTEGER PRIMARY KEY,
                 segment_id INTEGER NOT NULL,
                 rater TEXT NOT NULL
             );
+            CREATE TABLE excluded_segments (
+                segment_id INTEGER PRIMARY KEY
+            );
             INSERT INTO windows VALUES
-                (1, 0.0, 5.0, 'listen'),
-                (2, 5.0, 10.0, 'listen'),
-                (3, 10.0, 15.0, 'listen');
-            INSERT INTO segments VALUES (1, 1), (2, 2), (3, 3);
+                (1, 1, 0.0, 5.0, 'listen'),
+                (2, 1, 5.0, 10.0, 'listen'),
+                (3, 1, 10.0, 15.0, 'listen');
+            INSERT INTO segments VALUES (1, 1, 10), (2, 2, 20), (3, 3, 30);
             INSERT INTO labels VALUES (1, 1, 'rater-a');
         """)
         self.app = SimpleNamespace(cur=self.conn.cursor())
@@ -59,6 +64,12 @@ class UnlabeledNavigationTests(unittest.TestCase):
     def test_combined_rating_clip_finds_unlabeled_base_windows(self) -> None:
         has_unlabeled = self.gui.LabelFastApp._window_has_unlabeled
         self.assertTrue(has_unlabeled(self.app, "rater-a", 0.0, 15.0))
+
+    def test_excluded_segments_are_not_treated_as_unlabeled(self) -> None:
+        self.conn.execute("INSERT INTO excluded_segments VALUES (2)")
+        self.conn.execute("INSERT INTO excluded_segments VALUES (3)")
+        has_unlabeled = self.gui.LabelFastApp._window_has_unlabeled
+        self.assertFalse(has_unlabeled(self.app, "rater-a", 0.0, 15.0))
 
     def test_combined_rating_clip_matches_its_situation(self) -> None:
         matches = self.gui.LabelFastApp._window_matches_situation

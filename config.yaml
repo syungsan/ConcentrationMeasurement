@@ -33,3 +33,12 @@ pose:
   model: "models/yolov8x-pose.pt"
   conf: 0.25
   imgsz: 384                  # crop推論サイズ
+
+face_exclusion:
+  enabled: true
+  db_path: "models/face_db.npz"
+  device: "cuda"
+  similarity_threshold: 0.50  # ArcFace cosine similarity（誤除外を避けるため高め）
+  min_matches: 2              # 同一登録者に一致する最低フレーム数
+  min_match_ratio: 0.50       # セグメント内サンプル全体に占める最低一致率
+  max_frames: 8               # 1セグメントで照合する最大フレーム数

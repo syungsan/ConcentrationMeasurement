@@ -544,6 +544,15 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
     for db_i, db_path in enumerate(cfg.db_paths):
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
+        has_excluded_segments = cur.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='excluded_segments'"
+        ).fetchone() is not None
+        exclusion_filter = """
+            AND NOT EXISTS (
+                SELECT 1 FROM excluded_segments es
+                WHERE es.segment_id=s.id
+            )
+        """ if has_excluded_segments else ""
 
         metadata = get_metadata(conn)
         if cfg.split_unit in {"school", "session"} and metadata is None:
@@ -571,7 +580,7 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
                 JOIN windows w ON w.id = s.window_id
                 JOIN segment_frames sf ON sf.segment_id = s.id
                 JOIN label_consensus c ON c.segment_id = s.id
-                WHERE {' AND '.join(filters)}
+                WHERE {' AND '.join(filters)} {exclusion_filter}
                 GROUP BY s.id
                 ORDER BY w.video_id, w.t_start, s.track_id
             """, params).fetchall()
@@ -583,7 +592,7 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
                 JOIN windows w ON w.id = s.window_id
                 JOIN segment_frames sf ON sf.segment_id = s.id
                 JOIN labels l ON l.segment_id = s.id AND l.rater IN ({qmarks})
-                WHERE w.situation IN (?, ?, ?)
+                WHERE w.situation IN (?, ?, ?) {exclusion_filter}
                 GROUP BY s.id
                 ORDER BY w.video_id, w.t_start, s.track_id
             """, cfg.raters + list(SITUATIONS)).fetchall()

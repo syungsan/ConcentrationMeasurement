@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS window_skips (
   FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
 );
 
+-- 区間内で学習・評価対象にしない人物（先生、保護者など）
+CREATE TABLE IF NOT EXISTS excluded_segments (
+  segment_id INTEGER PRIMARY KEY,
+  reason TEXT NOT NULL DEFAULT 'adult',
+  excluded_by TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS label_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT DEFAULT (datetime('now')),
@@ -123,6 +132,7 @@ CREATE INDEX IF NOT EXISTS idx_det_video_track_t ON detections(video_id, track_i
 CREATE INDEX IF NOT EXISTS idx_windows_video_time ON windows(video_id, t_start, t_end);
 CREATE INDEX IF NOT EXISTS idx_seg_window_track ON segments(window_id, track_id);
 CREATE INDEX IF NOT EXISTS idx_segframes_segment ON segment_frames(segment_id);
+CREATE INDEX IF NOT EXISTS idx_excluded_segments_segment ON excluded_segments(segment_id);
 
 -- ★推論検索用
 CREATE INDEX IF NOT EXISTS idx_pred_video_track_t ON predictions(video_id, track_id, t);

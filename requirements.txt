@@ -9,7 +9,13 @@ openpyxl
 matplotlib
 seaborn
 scikit-learn
+insightface
+# ONNX Runtime 1.26.x is the last series built for CUDA 12.8 on PyPI.
+# Do not install the CPU-only `onnxruntime` package alongside this package.
+onnxruntime-gpu==1.26.0
 
 # PyTorch
 # CUDA 12.8.2
 # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+# pip uninstall -y onnxruntime onnxruntime-gpu

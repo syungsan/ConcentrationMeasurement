@@ -15,6 +15,7 @@ from ultralytics import YOLO
 
 from lib.db import connect, init_db, upsert_video, ensure_track
 from lib.image_roi import image_model_crop
+from lib.face_exclusion import FaceDbMatcher, OnlineFaceExclusionTracker
 from lib.runroot import get_data_root, rpath
 from lib.pose_norm import normalize_pose_kpts
 from lib.seq_buffer import MultiTrackBuffer
@@ -453,6 +454,8 @@ class TrackDrawState:
     last_seen_t: float            # seconds
     det_conf: float = 1.0
     kpts_frame: Optional[np.ndarray] = None  # [K,3] in frame coords
+    excluded: bool = False
+    excluded_name: Optional[str] = None
 
 
 # -------------------------
@@ -571,6 +574,24 @@ def main():
     pose_imgsz = int(args.pose_imgsz) if args.pose_imgsz > 0 else int(posecfg["imgsz"])
 
     det_model = YOLO(str((repo_root / detcfg["model"]).resolve()))
+
+    face_tracker = None
+    face_cfg = cfg.get("face_exclusion", {})
+    if bool(face_cfg.get("enabled", False)):
+        face_db_path = (repo_root / str(face_cfg.get("db_path", "models/face_db.npz"))).resolve()
+        if not face_db_path.exists():
+            raise FileNotFoundError(f"face DB not found: {face_db_path}")
+        face_tracker = OnlineFaceExclusionTracker(
+            FaceDbMatcher(
+                face_db_path,
+                threshold=float(face_cfg.get("similarity_threshold", 0.50)),
+                device=str(face_cfg.get("device", args.device)),
+            ),
+            min_matches=int(face_cfg.get("min_matches", 2)),
+            min_match_ratio=float(face_cfg.get("min_match_ratio", 0.50)),
+            max_frames=int(face_cfg.get("max_frames", 8)),
+        )
+        print(f"face exclusion: enabled, DB={face_db_path}")
 
     need_pose = (args.mode in ("skeleton", "fusion"))
     draw_pose = bool(args.draw_skeleton) and (args.mode in ("skeleton", "fusion"))
@@ -700,6 +721,35 @@ def main():
                         if crop0.size == 0:
                             continue
 
+                        excluded = False
+                        excluded_name = None
+                        if face_tracker is not None:
+                            excluded, excluded_name = face_tracker.update(tid, crop0)
+                        bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
+                        if excluded:
+                            buffers.buf.pop(int(tid), None)
+                            if tid in latest:
+                                st = latest[tid]
+                                st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
+                                st.score = float("nan")
+                                st.last_seen_t = float(t)
+                                st.det_conf = det_conf
+                                st.excluded = True
+                                st.excluded_name = excluded_name
+                            else:
+                                latest[tid] = TrackDrawState(
+                                    bbox=bbox_new,
+                                    score=float("nan"),
+                                    last_seen_t=float(t),
+                                    det_conf=det_conf,
+                                    excluded=True,
+                                    excluded_name=excluded_name,
+                                )
+                            continue
+                        if tid in latest:
+                            latest[tid].excluded = False
+                            latest[tid].excluded_name = None
+
                         crop_h0, crop_w0 = crop0.shape[:2]
                         pose_crop = resize_long_side(crop0, crop_long)
                         crop = resize_long_side(image_model_crop(crop0, image_roi), crop_long)
@@ -774,6 +824,8 @@ def main():
                             bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
                             if tid in latest:
                                 st = latest[tid]
+                                st.excluded = False
+                                st.excluded_name = None
                                 st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
                                 st.score = ema(st.score, float(yhat), float(args.score_alpha))
                                 st.last_seen_t = float(t)
@@ -787,6 +839,7 @@ def main():
                                     last_seen_t=float(t),
                                     det_conf=det_conf,
                                     kpts_frame=kpts_frame_for_draw,
+                                    excluded=False,
                                 )
 
                             crop_rel = None
@@ -829,6 +882,8 @@ def main():
                 for tid in list(latest.keys()):
                     if (t - latest[tid].last_seen_t) > float(args.ttl):
                         del latest[tid]
+                        if face_tracker is not None:
+                            face_tracker.forget(tid)
 
             # --- stable_id mapping for display (every frame) ---
             tid_to_sid: Dict[int, int] = {}
@@ -838,7 +893,10 @@ def main():
                 tid_to_sid = {int(d["tid"]): int(d["stable_id"]) for d in dets}
 
             # --- draw ---
-            scores = [st.score for st in latest.values() if not math.isnan(float(st.score))]
+            scores = [
+                st.score for st in latest.values()
+                if not st.excluded and not math.isnan(float(st.score))
+            ]
             if scores:
                 avg_now = float(np.mean(scores))
                 class_avg_ema = avg_now if class_avg_ema is None else ema(class_avg_ema, avg_now, float(args.class_alpha))
@@ -868,12 +926,27 @@ def main():
                     continue
                 x1i, y1i, x2i, y2i = bb
 
-                cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
-                score_i = clamp_1to7(float(st.score))
-
                 show_id = int(tid_to_sid.get(int(tid), int(tid))) if mapper is not None else int(tid)
-                draw_label(frame, x1i, y1i, f"ID:{show_id}  score:{score_i}",
-                           font_scale=float(args.label_scale), thickness=int(args.label_thick))
+                if st.excluded:
+                    cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 128, 255), int(args.box_thick))
+                    suffix = f" ({st.excluded_name})" if st.excluded_name else ""
+                    draw_label(
+                        frame, x1i, y1i, f"ID:{show_id}  EXCLUDED{suffix}",
+                        font_scale=float(args.label_scale),
+                        thickness=int(args.label_thick),
+                    )
+                elif not math.isnan(float(st.score)):
+                    cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
+                    score_i = clamp_1to7(float(st.score))
+                    draw_label(frame, x1i, y1i, f"ID:{show_id}  score:{score_i}",
+                               font_scale=float(args.label_scale), thickness=int(args.label_thick))
+                else:
+                    cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
+                    draw_label(
+                        frame, x1i, y1i, f"ID:{show_id}  warm-up",
+                        font_scale=max(0.50, float(args.label_scale) * 0.66),
+                        thickness=1,
+                    )
 
                 if args.mosaic_eyes and (args.mode in ("skeleton", "fusion")) and st.kpts_frame is not None:
                     mosaic_eyes_from_kpts(

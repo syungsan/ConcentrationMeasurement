@@ -330,6 +330,7 @@ class StudentTile(QFrame):
         self.crop_dir_cfg = crop_dir_cfg
 
         self.score: int | None = None
+        self.excluded = False
         self.tile_w = tile_w
         self.tile_h = tile_h
         self.debug_missing = debug_missing
@@ -446,7 +447,7 @@ class StudentTile(QFrame):
             self.miss_lbl.setText(f"missing:\n{self.thumb_path}")
 
     def apply_style(self, selected: bool):
-        bg = score_color(self.score)
+        bg = "#d1d5db" if self.excluded else score_color(self.score)
         if selected:
             self.setStyleSheet(f"QFrame {{ background: {bg}; border: 3px solid #2563eb; border-radius: 10px; }}")
         else:
@@ -458,6 +459,15 @@ class StudentTile(QFrame):
     def set_score(self, score: int | None):
         self.score = score
         self.score_lbl.setText(f"集中度: {score}" if score is not None else "集中度: -")
+        self.apply_style(selected=False)
+
+    def set_excluded(self, excluded: bool):
+        self.excluded = bool(excluded)
+        self.score_lbl.setText(
+            "対象外（-で解除）"
+            if self.excluded
+            else (f"集中度: {self.score}" if self.score is not None else "集中度: -")
+        )
         self.apply_style(selected=False)
 
     def mousePressEvent(self, event):
@@ -486,7 +496,7 @@ class GlobalKeyCatcher(QObject):
             Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4,
             Qt.Key_5, Qt.Key_6, Qt.Key_7,
             Qt.Key_Delete, Qt.Key_Backspace,
-            Qt.Key_W, Qt.Key_R, Qt.Key_E, Qt.Key_H, Qt.Key_Z,
+            Qt.Key_W, Qt.Key_R, Qt.Key_E, Qt.Key_H, Qt.Key_Z, Qt.Key_Minus,
             Qt.Key_N,
         }
 
@@ -1054,7 +1064,7 @@ class LabelFastApp(QWidget):
         self.btn_undo.setProperty("compact", True)
         self.btn_undo.clicked.connect(self.undo)
 
-        self.btn_export = QPushButton("CSV出力（E）")
+        self.btn_export = QPushButton("CSV出力（Ctrl+E）")
         self.btn_export.setProperty("compact", True)
         self.btn_export.clicked.connect(self.export_csv_for_rater)
 
@@ -1328,6 +1338,15 @@ class LabelFastApp(QWidget):
                              UNIQUE(rater, window_id),
                              FOREIGN KEY(window_id) REFERENCES windows(id) ON DELETE CASCADE
                              );
+                         """)
+        self.cur.execute("""
+                         CREATE TABLE IF NOT EXISTS excluded_segments (
+                             segment_id INTEGER PRIMARY KEY,
+                             reason TEXT NOT NULL DEFAULT 'adult',
+                             excluded_by TEXT,
+                             created_at TEXT DEFAULT (datetime('now')),
+                             FOREIGN KEY(segment_id) REFERENCES segments(id) ON DELETE CASCADE
+                         );
                          """)
         self.conn.commit()
         ensure_research_schema(self.conn)
@@ -1710,6 +1729,10 @@ class LabelFastApp(QWidget):
                     LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
                     WHERE ((w.t_start+w.t_end)/2.0)>=?
                       AND ((w.t_start+w.t_end)/2.0)<?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM excluded_segments es
+                          WHERE es.segment_id=s.id
+                      )
                 """, (rater, t0, t1)).fetchone()
                 if row and int(row[1]) < int(row[0]):
                     remaining += 1
@@ -1724,6 +1747,10 @@ class LabelFastApp(QWidget):
                                    SELECT 1 FROM segments s
                                    LEFT JOIN labels l ON l.segment_id=s.id AND l.rater=?
                                    WHERE s.window_id=w.id AND l.id IS NULL
+                                     AND NOT EXISTS (
+                                         SELECT 1 FROM excluded_segments es
+                                         WHERE es.segment_id=s.id
+                                     )
                                )
                                """, (rater, rater)).fetchone()
         return int(row[0]) if row else 0
@@ -2002,6 +2029,10 @@ class LabelFastApp(QWidget):
                                WHERE ((w.t_start+w.t_end)/2.0)>=?
                                  AND ((w.t_start+w.t_end)/2.0)<?
                                  AND l.id IS NULL
+                                 AND NOT EXISTS (
+                                     SELECT 1 FROM excluded_segments es
+                                     WHERE es.segment_id=s.id
+                                 )
                                LIMIT 1
                                """, (rater, float(t0), float(t1))).fetchone()
         return row is not None
@@ -2263,6 +2294,11 @@ class LabelFastApp(QWidget):
             scores = [int(row[0]) for row in labels]
             if len(scores) == len(segment_ids) and len(set(scores)) == 1:
                 tile.set_score(scores[0])
+            excluded_count = int(self.cur.execute(f"""
+                SELECT COUNT(*) FROM excluded_segments
+                WHERE segment_id IN ({qmarks})
+            """, segment_ids).fetchone()[0])
+            tile.set_excluded(excluded_count == len(segment_ids))
 
             r_i = i // self.cols
             c_i = i % self.cols
@@ -2276,7 +2312,10 @@ class LabelFastApp(QWidget):
         if was_playing:
             self.player.play()
 
-        first = next((i for i, t in enumerate(self.tiles) if t.score is None), 0)
+        first = next(
+            (i for i, t in enumerate(self.tiles) if t.score is None and not t.excluded),
+            0,
+        )
         self.select_tile(first, trigger_anim=True)
 
     def reload_current_window(self):
@@ -2359,11 +2398,11 @@ class LabelFastApp(QWidget):
             return
         start = self.selected_idx + 1
         for i in range(start, len(self.tiles)):
-            if self.tiles[i].score is None:
+            if self.tiles[i].score is None and not self.tiles[i].excluded:
                 self.select_tile(i, trigger_anim=True)
                 return
         for i in range(0, len(self.tiles)):
-            if self.tiles[i].score is None:
+            if self.tiles[i].score is None and not self.tiles[i].excluded:
                 self.select_tile(i, trigger_anim=True)
                 return
 
@@ -2394,6 +2433,9 @@ class LabelFastApp(QWidget):
             return
 
         tile = self.tiles[self.selected_idx]
+        if tile.excluded:
+            QMessageBox.information(self, "対象外", "この人物は対象外です。-キーで解除できます。")
+            return
         seg_id = int(tile.seg_id)
         segment_ids = self.clip_segment_ids.get(seg_id, [seg_id])
         qmarks = ",".join(["?"] * len(segment_ids))
@@ -2455,6 +2497,41 @@ class LabelFastApp(QWidget):
         self.refresh_window_table()
         if self.cb_auto_advance.isChecked():
             self.auto_advance()
+
+    def toggle_selected_segment_exclusion(self):
+        if self.selected_idx < 0 or self.selected_idx >= len(self.tiles):
+            return
+        rater = self.rater()
+        if not rater:
+            QMessageBox.information(self, "評価者", "評価者名を入力してください。")
+            return
+        tile = self.tiles[self.selected_idx]
+        segment_ids = self.clip_segment_ids.get(int(tile.seg_id), [int(tile.seg_id)])
+        qmarks = ",".join(["?"] * len(segment_ids))
+        excluded_count = int(self.cur.execute(
+            f"SELECT COUNT(*) FROM excluded_segments WHERE segment_id IN ({qmarks})",
+            segment_ids,
+        ).fetchone()[0])
+        if excluded_count == len(segment_ids):
+            self.cur.execute(
+                f"DELETE FROM excluded_segments WHERE segment_id IN ({qmarks})",
+                segment_ids,
+            )
+            action = "segment_include"
+            message = f"ID {tile.track_id} を現在の区間の採点・学習対象に戻しました。"
+        else:
+            self.cur.executemany("""
+                INSERT INTO excluded_segments(segment_id, reason, excluded_by)
+                VALUES(?, 'adult', ?)
+                ON CONFLICT(segment_id) DO UPDATE SET
+                  reason='adult', excluded_by=excluded.excluded_by
+            """, [(segment_id, rater) for segment_id in segment_ids])
+            action = "segment_exclude"
+            message = f"ID {tile.track_id} を現在の区間だけ学習対象から除外しました。"
+        self.conn.commit()
+        self.log_event(rater, action, int(tile.seg_id), None, None)
+        self.status.setText(f"状態: {message}")
+        self.reload_current_window()
 
     def delete_selected_label(self):
         r = self.rater()
@@ -2783,8 +2860,11 @@ class LabelFastApp(QWidget):
         if key == Qt.Key_R:
             self.delete_all_labels_for_rater()
             return
-        if key == Qt.Key_E:
+        if key == Qt.Key_E and (modifiers_int & ctrl_mask):
             self.export_csv_for_rater()
+            return
+        if key == Qt.Key_Minus:
+            self.toggle_selected_segment_exclusion()
             return
         if key == Qt.Key_H:
             self.show_history_dialog()

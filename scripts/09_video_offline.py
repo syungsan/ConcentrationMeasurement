@@ -22,6 +22,7 @@ from collections import deque
 from ultralytics import YOLO
 
 from lib.image_roi import image_model_crop
+from lib.face_exclusion import FaceDbMatcher, OnlineFaceExclusionTracker
 from lib.runroot import get_data_root, rpath
 from lib.infer import (
     load_ckpt, load_situation_model, build_image_tf, predict_score,
@@ -45,6 +46,8 @@ class TrackState:
     kpts_frame: Optional[np.ndarray] = None  # [K,3] x,y,conf in FRAME coordinates
     ready: bool = False
     last_infer_t: Optional[float] = None
+    excluded: bool = False
+    excluded_name: Optional[str] = None
 
 
 def ema(old: float, new: float, alpha: float) -> float:
@@ -744,6 +747,24 @@ def main():
     det = YOLO(det_model_path)
     pose = YOLO(pose_model_path)
 
+    face_tracker = None
+    face_cfg = ycfg.get("face_exclusion", {})
+    if bool(face_cfg.get("enabled", False)):
+        face_db_path = (repo_root / str(face_cfg.get("db_path", "models/face_db.npz"))).resolve()
+        if not face_db_path.exists():
+            raise FileNotFoundError(f"face DB not found: {face_db_path}")
+        face_tracker = OnlineFaceExclusionTracker(
+            FaceDbMatcher(
+                face_db_path,
+                threshold=float(face_cfg.get("similarity_threshold", 0.50)),
+                device=str(face_cfg.get("device", args.device)),
+            ),
+            min_matches=int(face_cfg.get("min_matches", 2)),
+            min_match_ratio=float(face_cfg.get("min_match_ratio", 0.50)),
+            max_frames=int(face_cfg.get("max_frames", 8)),
+        )
+        print(f"face exclusion: enabled, DB={face_db_path}")
+
     trk_cfg = ycfg["detection_tracking"]
     tracker = args.tracker or trk_cfg.get("tracker", "botsort.yaml")
     tracker_path = (repo_root / tracker).resolve()
@@ -867,6 +888,34 @@ def main():
             crop = frame[y1i:y2i, x1i:x2i].copy()
             if crop.size == 0:
                 continue
+            bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
+            excluded = False
+            excluded_name = None
+            if face_tracker is not None and sample_due:
+                excluded, excluded_name = face_tracker.update(tid, crop)
+            elif tid in tracks:
+                excluded = tracks[tid].excluded
+                excluded_name = tracks[tid].excluded_name
+            if excluded:
+                img_buf.pop(tid, None)
+                pose_buf.pop(tid, None)
+                if tid in tracks:
+                    st = tracks[tid]
+                    st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
+                    st.score = float("nan")
+                    st.ready = False
+                    st.last_infer_t = None
+                    st.last_seen = frame_idx
+                    st.det_conf = det_conf
+                    st.excluded = True
+                    st.excluded_name = excluded_name
+                else:
+                    tracks[tid] = TrackState(
+                        bbox=bbox_new, score=float("nan"), last_seen=frame_idx,
+                        det_conf=det_conf, ready=False, excluded=True,
+                        excluded_name=excluded_name,
+                    )
+                continue
             image_crop = image_model_crop(crop, image_roi)
 
             if sample_due and args.mode in ("image", "fusion"):
@@ -949,9 +998,10 @@ def main():
                 if not math.isnan(score_raw):
                     inferred_tids.add(tid)
 
-            bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
             if tid in tracks:
                 st = tracks[tid]
+                st.excluded = False
+                st.excluded_name = None
                 st.bbox = ema_bbox(st.bbox, bbox_new, float(args.bbox_alpha))
                 if not math.isnan(score_raw):
                     st.score = (
@@ -974,6 +1024,7 @@ def main():
                     kpts_frame=kpts_for_draw,
                     ready=has_score,
                     last_infer_t=t if has_score else None,
+                    excluded=False,
                 )
 
             if args.save_assets:
@@ -998,6 +1049,8 @@ def main():
                 del tracks[tid]
                 img_buf.pop(tid, None)
                 pose_buf.pop(tid, None)
+                if face_tracker is not None:
+                    face_tracker.forget(tid)
 
         # stable id mapping (optional)
         tid_to_sid: Dict[int, int] = {}
@@ -1007,9 +1060,10 @@ def main():
             tid_to_sid = {int(d["tid"]): int(d["stable_id"]) for d in dets}
 
         # class avg
-        scores_now = [float(st.score) for _tid, st in alive if st.ready]
+        scores_now = [float(st.score) for _tid, st in alive if st.ready and not st.excluded]
         newly_inferred_scores = [
-            float(st.score) for tid, st in alive if tid in inferred_tids and st.ready
+            float(st.score) for tid, st in alive
+            if tid in inferred_tids and st.ready and not st.excluded
         ]
         if newly_inferred_scores:
             avg_now = float(np.mean(newly_inferred_scores))
@@ -1046,10 +1100,19 @@ def main():
                 continue
             x1i, y1i, x2i, y2i = bb
 
-            cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
-
             show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
-            if st.ready:
+            if st.excluded:
+                cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 128, 255), int(args.box_thick))
+                suffix = f" ({st.excluded_name})" if st.excluded_name else ""
+                draw_label(
+                    frame, x1i, y1i,
+                    f"ID:{int(show_id)}  EXCLUDED{suffix}",
+                    font_scale=float(args.label_scale),
+                    thickness=int(args.label_thick),
+                    text_color=(255, 255, 255), bg_color=(0, 96, 192),
+                )
+            elif st.ready:
+                cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
                 draw_label(
                     frame, x1i, y1i,
                     f"ID:{int(show_id)}  score:{clamp_1to7(float(st.score))}",
@@ -1057,6 +1120,7 @@ def main():
                     thickness=int(args.label_thick),
                 )
             else:
+                cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 255, 0), int(args.box_thick))
                 warm_count = max(
                     len(img_buf.get(tid, ())), len(pose_buf.get(tid, ()))
                 )
@@ -1089,7 +1153,7 @@ def main():
 
         # log DB
         for tid, st in alive:
-            if tid not in inferred_tids or not st.ready:
+            if tid not in inferred_tids or not st.ready or st.excluded:
                 continue
             x1, y1, x2, y2 = st.bbox.tolist()
             score = float(st.score)
