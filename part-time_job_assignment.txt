@@ -1,0 +1,23 @@
+Team A
+20260227_unnan_nishi_5-1_1
+20260713_unnan_nishi_2-1_1_a
+20260713_unnan_nishi_2-1_1_b
+
+Team B
+20260227_unnan_nishi_5-1_2
+20260714_unnan_nishi_3-1_1_a
+20260714_unnan_nishi_3-1_1_b
+
+Team C
+20260311_unnan_nishi_5-1_1
+20260714_unnan_nishi_6-1_1_a
+20260714_unnan_nishi_6-1_1_b
+
+Team D
+20260313_unnan_nishi_5-1_1_a
+20260313_unnan_nishi_5-1_1_b
+20260713_unnan_nishi_5-1_1
+
+Team E
+20260313_unnan_nishi_5-1_2_a
+20260313_unnan_nishi_5-1_2_b

@@ -13,7 +13,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FACES_DIR = PROJECT_ROOT / "faces"
 
 # InsightFace 1.0.1内のscikit-image旧APIに対する既知の警告だけを抑制する。

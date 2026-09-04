@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FACES_DIR = PROJECT_ROOT / "faces"
 DEFAULT_DB_PATH = PROJECT_ROOT / "models" / "face_db.npz"
 
