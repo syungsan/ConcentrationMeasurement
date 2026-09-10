@@ -5,35 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="e9b775ae-2a56-42b2-ad21-2ae66494b1f6" name="変更" comment="">
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0000.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0000.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0001.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0001.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0002.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0002.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0003.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0003.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0004.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0004.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0005.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0005.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0006.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0006.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0007.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0007.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0008.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0008.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0009.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0009.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0010.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0010.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0011.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0011.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0012.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0012.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0013.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0013.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0014.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0014.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0015.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0015.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0016.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0016.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0017.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0017.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0018.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0018.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0019.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0019.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0020.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0020.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0021.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0021.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0022.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0022.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0023.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0023.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0024.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0024.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0025.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0025.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/faces/tadano/0026.jpg" beforeDir="false" afterPath="$PROJECT_DIR$/faces/tadano/0026.jpg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements_for_mac.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements_for_mac.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/time_required.txt" beforeDir="false" afterPath="$PROJECT_DIR$/time_required.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/07_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/07_train.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -52,31 +25,31 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.build_face_db.executor": "Run",
-    "Python.capture_faces_gui.executor": "Run",
-    "Python.launcher.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "main",
-    "kotlin-language-version-configured": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.jshint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.jshint": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "project.structure.last.edited": "SDK",
-    "project.structure.proportion": "0.15",
-    "project.structure.side.proportion": "0.2",
-    "python.packages.toolwindow.project.migrated.to.right.top.v2": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.build_face_db.executor&quot;: &quot;Run&quot;,
+    &quot;Python.capture_faces_gui.executor&quot;: &quot;Run&quot;,
+    &quot;Python.launcher.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.jshint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.jshint&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;project.structure.last.edited&quot;: &quot;SDK&quot;,
+    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
+    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
+    &quot;python.packages.toolwindow.project.migrated.to.right.top.v2&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="D:\MyProjects\python_projects\concentration_measurement\concentration_measurement\scripts\tools" />
@@ -99,6 +72,7 @@
       <workItem from="1788296369195" duration="1032000" />
       <workItem from="1788299069117" duration="1830000" />
       <workItem from="1788729325140" duration="2068000" />
+      <workItem from="1789047810529" duration="804000" />
     </task>
     <servers />
   </component>

@@ -1174,4 +1174,4 @@ if __name__ == "__main__":
 # マージ後
 # python.exe scripts\07_train.py --data_roots datasets\lesson_001 --db_paths merged\lesson_001_merged.sqlite --label_source consensus --mode fusion
 
-# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post
+# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post
