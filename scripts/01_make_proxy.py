@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 import yaml
 
+from lib.platform_tools import find_video_tool
 from lib.runroot import get_data_root, rpath
 
 here = Path(__file__).resolve()
@@ -34,7 +35,7 @@ def main():
     proxy = rpath(data_root, cfg["paths"]["proxy_video"])
     p = cfg["proxy"]
 
-    ffmpeg_bin = (repo_root / "ffmpeg/bin/ffmpeg.exe").resolve()
+    ffmpeg_bin = find_video_tool(repo_root)
     if not ffmpeg_bin.exists():
         raise FileNotFoundError(f"ffmpeg not found: {ffmpeg_bin}")
 
@@ -48,11 +49,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-        import winsound
-        try:
-            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-        except Exception as e:
-            print(f"[WARN] 音声を再生できませんでした: {e}")
+        from lib.completion_sound import play_completion_sound
+        play_completion_sound()
     finally:
         elapsed = time.perf_counter() - SCRIPT_STARTED_AT
         hours, remainder = divmod(elapsed, 3600)

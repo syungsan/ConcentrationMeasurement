@@ -19,6 +19,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
+from lib.devices import resolve_device
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -180,7 +181,8 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def choose_T_indices(n: int, T: int, strategy: str, is_train: bool) -> List[int]:
@@ -653,7 +655,7 @@ def train_one(
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.device.startswith("cuda"),
         collate_fn=collate_fn,
         persistent_workers=(cfg.num_workers > 0),
         prefetch_factor=2 if cfg.num_workers > 0 else None,
@@ -663,7 +665,7 @@ def train_one(
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.num_workers,
-        pin_memory=True,
+        pin_memory=cfg.device.startswith("cuda"),
         collate_fn=collate_fn,
         persistent_workers=(cfg.num_workers > 0),
         prefetch_factor=2 if cfg.num_workers > 0 else None,
@@ -852,13 +854,13 @@ def train_situation_one(
     ds_va = MultiSQLiteSegmentDataset(cfg, va_items, is_train=False)
     dl_tr = DataLoader(
         ds_tr, batch_size=cfg.batch_size, shuffle=True,
-        num_workers=cfg.num_workers, pin_memory=True, collate_fn=collate_fn,
+        num_workers=cfg.num_workers, pin_memory=cfg.device.startswith("cuda"), collate_fn=collate_fn,
         persistent_workers=(cfg.num_workers > 0),
         prefetch_factor=2 if cfg.num_workers > 0 else None,
     )
     dl_va = DataLoader(
         ds_va, batch_size=cfg.batch_size, shuffle=False,
-        num_workers=cfg.num_workers, pin_memory=True, collate_fn=collate_fn,
+        num_workers=cfg.num_workers, pin_memory=cfg.device.startswith("cuda"), collate_fn=collate_fn,
         persistent_workers=(cfg.num_workers > 0),
         prefetch_factor=2 if cfg.num_workers > 0 else None,
     )
@@ -1011,6 +1013,7 @@ def parse_args():
         default="",
         help="Directory for training history CSV/JSON/PNG/SVG outputs. Default: <save_name stem>_training_report",
     )
+    ap.add_argument("--device", default="auto", help="auto, mps, cuda, cuda:0, cpu")
     return ap.parse_args()
 
 
@@ -1069,6 +1072,7 @@ def main():
         lr=args.lr,
         weight_decay=args.weight_decay,
         seed=args.seed,
+        device=resolve_device(args.device),
         num_workers=args.num_workers,
         sample_strategy=args.sample_strategy,  # type: ignore[arg-type]
         img_size=args.img_size,
@@ -1149,11 +1153,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-        import winsound
-        try:
-            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-        except Exception as e:
-            print(f"[WARN] 音声を再生できませんでした: {e}")
+        from lib.completion_sound import play_completion_sound
+        play_completion_sound()
     finally:
         elapsed = time.perf_counter() - SCRIPT_STARTED_AT
         hours, remainder = divmod(elapsed, 3600)
@@ -1174,4 +1175,4 @@ if __name__ == "__main__":
 # マージ後
 # python.exe scripts\07_train.py --data_roots datasets\lesson_001 --db_paths merged\lesson_001_merged.sqlite --label_source consensus --mode fusion
 
-# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post
+# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post

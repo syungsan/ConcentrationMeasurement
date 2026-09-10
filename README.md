@@ -4,10 +4,57 @@
 
 ## 動作環境
 
-- Windows 10 / 11
+- Windows 10 / 11 または Apple Silicon Mac（M1以降）
 - Python 3.12（同梱WinPythonを推奨）
 - NVIDIA GPU（学習・推論を高速化する場合）
 - ffmpeg（動画の変換・音声結合に使用。リポジトリの`ffmpeg/bin`も利用可能）
+
+## Mac（Mシリーズ）で実行する方法
+
+arm64版Python 3.12の仮想環境を使用してください。このMacで確認した環境は
+`/Users/syungsan/venvs/3.12/concentration_measurement/` です。
+
+```bash
+source /Users/syungsan/venvs/3.12/concentration_measurement/bin/activate
+python -m pip install -r requirements_for_mac.txt
+brew install ffmpeg-full
+python launcher.py
+```
+
+`brew install ffmpeg-full` はffmpegが未導入の場合に実行します。ランチャーは起動に使ったPythonを
+子プロセスにも使用します。Tkinterが必要です（`python -m tkinter` で確認できます）。
+HomebrewのPythonでTkinterがない場合は対応する `python-tk@3.12` を導入してください。
+
+学習・検出・姿勢推定・動画推論はCUDA → MPS → CPUの順で利用可能なデバイスを自動選択します。
+MPSはApple SiliconのGPUを使うPyTorchバックエンドです。
+学習・リアルタイム推論・オフライン推論・評価には `--device mps` または `--device cpu` を指定できます。
+前処理の検出と姿勢推定は `config.yaml` の `detection_tracking.device` / `pose.device` で切り替えます。
+
+```bash
+python -c "import torch; print('MPS:', torch.backends.mps.is_available())"
+python scripts/07_train.py --help
+python scripts/09_video_offline.py --help
+python scripts/tools/build_face_db.py --device auto
+```
+
+InsightFace（顔DB作成・顔画像収集・除外判定）はONNX Runtimeを使います。
+Macの `auto` はCPUですが、`coreml` を指定するとCoreML経由でGPUを利用できます。
+顔画像収集GUIでは「Mac GPU（CoreML）」を選択してください。
+顔DB作成では `--device coreml`、除外判定では `config.yaml` の
+`face_exclusion.device: "coreml"` を指定します。
+CoreML非対応の演算はCPUで実行されます。初回のモデル準備には時間がかかることがあります。
+`mps` はPyTorch用の指定で、顔認識部分ではCPU扱いです。
+Mac用依存関係には `onnxruntime` を使用し、`onnxruntime-gpu` はインストールしません。
+顔画像収集は顔検出のみ実行し、特徴抽出・ランドマーク推定・年齢性別推定は省略します。
+
+このMacのダミー画像での5回の推論中央値（初期化・ウォームアップ除外）は、
+CPU / CoreMLで顔検出 94.6 / 19.0 ms、特徴抽出 52.9 / 10.9 msでした。
+実際のカメラ映像のFPSを保証する測定ではありません。
+[CoreMLの公式説明](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)
+
+モデルファイルとデータセットは別途必要です。`config.yaml` のモデル配置先を確認してください。
+MacでGPUメモリが不足する場合は学習の `--batch_size` を小さくするか `--device cpu` を指定します。
+MPS未対応演算のエラーが出る場合も `--device cpu` で実行できます。
 
 ## 同梱WinPythonを使う方法
 
@@ -58,3 +105,32 @@ PyTorchはCPU版または使用するCUDA環境に合う版を別途インスト
 - [研究設計・集計・AB解析](docs/RESEARCH_ANALYSIS.md)
 - [評価指標](docs/METRICS_GUIDE.md)
 - [トラブルシューティング](docs/TROUBLESHOOTING.md)
+
+## リアルタイム推論で顔認識による除外を省く
+
+通常の `08_realtime.py` のコマンドに `--no-face-exclusion` を追加します。
+`config.yaml` の `face_exclusion.enabled` より優先され、顔DBと顔認識モデルを
+読み込まず、顔照合による人物の除外を行いません。引数を省略すると従来どおり設定に従います。
+
+```bash
+python scripts/08_realtime.py --ckpt models/your_model.pt --show --no-face-exclusion
+```
+
+`models/your_model.pt` は学習済みチェックポイントのパスに置き換えてください。
+
+`04_extract_frames_assets.py` でも同じ引数が使えます。
+既存の除外判定は変更せず、顔認識による新規判定・更新を省きます。
+クロップ画像と姿勢データの抽出は通常どおり行います。
+
+```bash
+python scripts/04_extract_frames_assets.py --data_root datasets/lesson_001 --no-face-exclusion
+```
+
+ID付き動画の生成には字幕フィルター（libass）が必要です。
+Macでは通常版ffmpegに加えて `ffmpeg-full` を導入してください。
+スクリプトがHomebrewの `ffmpeg-full` を自動検出するため、強制リンクは不要です。
+検出結果が保存済みなら、次のコマンドでID付き動画だけ再生成できます。
+
+```bash
+python scripts/tools/build_proxy_id_video.py --dataset datasets/sample --label-fps 4
+```

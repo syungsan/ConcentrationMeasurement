@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import subprocess
 import threading
 import json
@@ -10,7 +11,8 @@ from tkinter import filedialog, messagebox, ttk
 
 
 ROOT = Path(__file__).resolve().parent
-PYTHON_EXE = ROOT / "WPy64-312101" / "python" / "python.exe"
+BUNDLED_PYTHON = ROOT / "WPy64-312101" / "python" / "python.exe"
+PYTHON_EXE = BUNDLED_PYTHON if sys.platform == "win32" and BUNDLED_PYTHON.exists() else Path(sys.executable)
 LABEL_GUI = ROOT / "scripts" / "06_label_gui.py"
 MERGE_SCRIPT = ROOT / "scripts" / "tools" / "merge_rater_databases.py"
 PACKAGE_BUILDER = ROOT / "scripts" / "tools" / "build_labeling_package.py"
@@ -188,7 +190,7 @@ class Launcher(tk.Tk):
 
     def validate_runtime(self) -> bool:
         if not PYTHON_EXE.exists():
-            messagebox.showerror("起動エラー", f"WinPythonが見つかりません:\n{PYTHON_EXE}")
+            messagebox.showerror("起動エラー", f"Pythonが見つかりません:\n{PYTHON_EXE}")
             return False
         if not LABEL_GUI.exists():
             messagebox.showerror("起動エラー", f"GUIが見つかりません:\n{LABEL_GUI}")
@@ -298,6 +300,8 @@ class Launcher(tk.Tk):
             "--datasets", *[str(entry.root) for entry in entries],
             "--output", str(output),
         ]
+        if sys.platform != "win32":
+            command.append("--skip-runtime")
         if overwrite:
             command.append("--overwrite")
         self.status.set("評価者用パッケージを作成中です...")

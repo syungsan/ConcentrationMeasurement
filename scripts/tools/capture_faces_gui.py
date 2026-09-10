@@ -1,10 +1,15 @@
 # capture_faces_gui.py
 
-import threading
+import multiprocessing as mp
+import queue
+import traceback
 import time
 import os
 import warnings
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.devices import face_device, face_providers, face_context_id
 
 import cv2
 import numpy as np
@@ -76,35 +81,32 @@ def capture_faces(
         out_root: str,
         person_name: str,
         duration: float = 10.0,
-        device: str = "cuda",
+        device: str = "auto",
         det_size=(640, 640),
         margin: int = 20,
         min_interval: float = 0.5,
         screen_w: int | None = None,
         screen_h: int | None = None,
+        stop_event=None,
 ):
     """
-    顔画像収集（GUI から別スレッドで呼び出される想定）
+    顔画像収集（独立プロセスのメインスレッドで実行する）
     """
     if FaceAnalysis is None:
         raise ImportError(
             "insightface がインポートできません。\n"
-            "`pip install insightface onnxruntime-gpu` などでインストールしてください。"
+            "`pip install -r requirements_for_mac.txt（Mac） / pip install -r requirements.txt（Windows）` などでインストールしてください。"
         )
 
     out_root = Path(out_root)
     person_dir = out_root / person_name
     person_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[INFO] カメラ {cam_index} をオープンします...")
-    cap = cv2.VideoCapture(cam_index)
-    if not cap.isOpened():
-        raise RuntimeError(f"Failed to open camera: {cam_index}")
-
     print(f"[INFO] 出力ディレクトリ: {person_dir.resolve()}")
     print(f"[INFO] 収録時間: {duration} 秒")
     print("[INFO] q または ESC で中断できます。")
 
+    device = face_device(device)
     use_cuda = device.startswith("cuda") and cuda_is_available()
     if device.startswith("cuda") and not use_cuda:
         raise RuntimeError(
@@ -112,99 +114,104 @@ def capture_faces(
             "CPUで実行する場合はデバイスでCPUを選択してください。"
         )
 
-    providers = (
-        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        if use_cuda
-        else ["CPUExecutionProvider"]
-    )
-    app = FaceAnalysis(name="buffalo_l", providers=providers)
+    providers = face_providers(device)
+    app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"], providers=providers)
     if use_cuda:
         ensure_models_use_cuda(app)
         print("[INFO] InsightFace の全モデルをCUDAで初期化しました。")
 
-    ctx_id = 0 if use_cuda else -1
+    ctx_id = face_context_id(device)
+    print(f"[INFO] 顔処理デバイス: {device}")
     app.prepare(ctx_id=ctx_id, det_size=det_size)
 
-    start_time = time.time()
-    last_save_time = 0.0
-    saved_count = 0
+    print(f"[INFO] カメラ {cam_index} をオープンします...")
+    cap = cv2.VideoCapture(cam_index)
+    if not cap.isOpened():
+        cap.release()
+        raise RuntimeError(f"Failed to open camera: {cam_index}")
 
-    win_name = f"Capture faces: {person_name}"
-    cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+    try:
+        start_time = time.time()
+        last_save_time = 0.0
+        saved_count = 0
 
-    # 画面中央に配置（最初のフレームを読んでから位置決め）
-    first_frame = True
+        win_name = f"Capture faces: {person_name}"
+        cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("[WARN] フレーム取得に失敗しました。終了します。")
-            break
+        # 画面中央に配置（最初のフレームを読んでから位置決め）
+        first_frame = True
 
-        if first_frame and screen_w is not None and screen_h is not None:
-            fh, fw = frame.shape[:2]
-            x = (screen_w - fw) // 2
-            y = (screen_h - fh) // 2
-            cv2.moveWindow(win_name, max(0, x), max(0, y))
-            first_frame = False
+        while stop_event is None or not stop_event.is_set():
+            ret, frame = cap.read()
+            if not ret:
+                print("[WARN] フレーム取得に失敗しました。終了します。")
+                break
 
-        now = time.time()
-        elapsed = now - start_time
-        if elapsed > duration:
-            print("[INFO] 指定時間に到達したので終了します。")
-            break
+            if first_frame and screen_w is not None and screen_h is not None:
+                fh, fw = frame.shape[:2]
+                x = (screen_w - fw) // 2
+                y = (screen_h - fh) // 2
+                cv2.moveWindow(win_name, max(0, x), max(0, y))
+                first_frame = False
 
-        h, w = frame.shape[:2]
+            now = time.time()
+            elapsed = now - start_time
+            if elapsed > duration:
+                print("[INFO] 指定時間に到達したので終了します。")
+                break
 
-        # 顔検出
-        faces = app.get(frame)
+            h, w = frame.shape[:2]
 
-        # 一番大きな顔を選択
-        best_face = None
-        best_area = 0.0
-        for f in faces:
-            x1, y1, x2, y2 = f.bbox
-            area = max(0.0, (x2 - x1) * (y2 - y1))
-            if area > best_area:
-                best_area = area
-                best_face = f
+            # 顔検出
+            faces = app.get(frame)
 
-        if best_face is not None:
-            x1, y1, x2, y2 = best_face.bbox
-            x1 = int(max(0, x1 - margin))
-            y1 = int(max(0, y1 - margin))
-            x2 = int(min(w - 1, x2 + margin))
-            y2 = int(min(h - 1, y2 + margin))
+            # 一番大きな顔を選択
+            best_face = None
+            best_area = 0.0
+            for f in faces:
+                x1, y1, x2, y2 = f.bbox
+                area = max(0.0, (x2 - x1) * (y2 - y1))
+                if area > best_area:
+                    best_area = area
+                    best_face = f
 
-            if x2 > x1 and y2 > y1:
-                face_crop = frame[y1:y2, x1:x2]
+            if best_face is not None:
+                x1, y1, x2, y2 = best_face.bbox
+                x1 = int(max(0, x1 - margin))
+                y1 = int(max(0, y1 - margin))
+                x2 = int(min(w - 1, x2 + margin))
+                y2 = int(min(h - 1, y2 + margin))
 
-                # 一定間隔ごとに保存（min_interval 秒）
-                if now - last_save_time >= min_interval:
-                    save_path = person_dir / f"{saved_count:04d}.jpg"
-                    cv2.imwrite(str(save_path), face_crop)
-                    saved_count += 1
-                    last_save_time = now
-                    print(f"[SAVE] {save_path.name} (t={elapsed:.1f}s)")
+                if x2 > x1 and y2 > y1:
+                    face_crop = frame[y1:y2, x1:x2]
 
-                # 画面上に矩形を表示
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # 一定間隔ごとに保存（min_interval 秒）
+                    if now - last_save_time >= min_interval:
+                        save_path = person_dir / f"{saved_count:04d}.jpg"
+                        cv2.imwrite(str(save_path), face_crop)
+                        saved_count += 1
+                        last_save_time = now
+                        print(f"[SAVE] {save_path.name} (t={elapsed:.1f}s)")
 
-        # 経過時間も表示
-        cv2.putText(
-            frame, f"{elapsed:4.1f}s / {duration:.1f}s",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA
-        )
+                    # 画面上に矩形を表示
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-        cv2.imshow(win_name, frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == 27 or key == ord("q"):
-            print("[INFO] キー入力により中断されました。")
-            break
+            # 経過時間も表示
+            cv2.putText(
+                frame, f"{elapsed:4.1f}s / {duration:.1f}s",
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA
+            )
 
-    cap.release()
-    cv2.destroyAllWindows()
+            cv2.imshow(win_name, frame)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27 or key == ord("q"):
+                print("[INFO] キー入力により中断されました。")
+                break
+
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
     print(f"[DONE] 保存した画像枚数: {saved_count}")
 
     # Windows なら収録フォルダを自動で開く
@@ -213,6 +220,17 @@ def capture_faces(
             os.startfile(str(person_dir.resolve()))
     except Exception as e:
         print(f"[WARN] フォルダを開く際にエラー: {e}")
+
+
+def capture_worker(options, stop_event, result_queue):
+    """Spawn target: OpenCV Cocoa windows must run on the main thread."""
+    try:
+        capture_faces(**options, stop_event=stop_event)
+    except Exception as exc:
+        traceback.print_exc()
+        result_queue.put(str(exc))
+    else:
+        result_queue.put(None)
 
 
 # ========== GUI 部分 ==========
@@ -227,13 +245,18 @@ class FaceCaptureGUI:
         self.screen_h = root.winfo_screenheight()
 
         # ウィンドウ自体も少し小さめで中央に
-        win_w, win_h = 420, 220
+        win_w, win_h = 600, 310
         x = (self.screen_w - win_w) // 2
         y = (self.screen_h - win_h) // 2
         self.root.geometry(f"{win_w}x{win_h}+{x}+{y}")
 
         self.is_capturing = False
-        self.capture_thread = None
+        self.capture_process = None
+        self.process_context = mp.get_context("spawn")
+        self.stop_event = None
+        self.result_queue = None
+        self.closing = False
+        self.root.protocol("WM_DELETE_WINDOW", self.on_quit)
 
         # 各種変数
         self.var_name = tk.StringVar()
@@ -241,7 +264,7 @@ class FaceCaptureGUI:
         self.var_duration = tk.DoubleVar(value=15.0)
         self.var_cam = tk.IntVar(value=0)
         self.var_device = tk.StringVar(
-            value="cuda" if cuda_is_available() else "cpu"
+            value="auto"
         )
 
         self._build_widgets()
@@ -280,6 +303,10 @@ class FaceCaptureGUI:
         ttk.Label(frame, text="デバイス:").grid(row=4, column=0, sticky="e", **pad)
         dev_frame = ttk.Frame(frame)
         dev_frame.grid(row=4, column=1, sticky="w", **pad)
+        ttk.Radiobutton(dev_frame, text="自動", value="auto",
+                        variable=self.var_device).pack(side="left")
+        ttk.Radiobutton(dev_frame, text="Mac GPU（CoreML）", value="coreml",
+                        variable=self.var_device).pack(side="left")
         ttk.Radiobutton(dev_frame, text="CUDA", value="cuda",
                         variable=self.var_device).pack(side="left")
         ttk.Radiobutton(dev_frame, text="CPU", value="cpu",
@@ -324,44 +351,54 @@ class FaceCaptureGUI:
         self.is_capturing = True
         self.btn_start.config(state="disabled")
 
-        def worker():
-            try:
-                capture_faces(
-                    cam_index=cam_index,
-                    out_root=out_root,
-                    person_name=name,
-                    duration=duration,
-                    device=device,
-                    det_size=(640, 640),
-                    margin=20,
-                    min_interval=0.5,
-                    screen_w=self.screen_w,
-                    screen_h=self.screen_h,
-                )
-            except Exception as e:
-                error_message = str(e)
+        self.stop_event = self.process_context.Event()
+        self.result_queue = self.process_context.Queue()
+        options = dict(
+            cam_index=cam_index, out_root=out_root, person_name=name,
+            duration=duration, device=device, det_size=(640, 640),
+            margin=20, min_interval=0.5,
+            screen_w=self.screen_w, screen_h=self.screen_h,
+        )
+        self.capture_process = self.process_context.Process(
+            target=capture_worker,
+            args=(options, self.stop_event, self.result_queue),
+        )
+        try:
+            self.capture_process.start()
+        except Exception as exc:
+            self.result_queue.close()
+            self.is_capturing = False
+            self.btn_start.config(state="normal")
+            messagebox.showerror("エラー", str(exc))
+            return
+        self.root.after(100, self.poll_capture)
 
-                # GUIスレッドでメッセージボックスを出す
-                def show_err(message=error_message):
-                    messagebox.showerror(
-                        "エラー",
-                        f"キャプチャ中にエラーが発生しました:\n{message}",
-                    )
-                self.root.after(0, show_err)
-            finally:
-                # 終了時にボタンなどを戻す
-                def finish():
-                    self.is_capturing = False
-                    self.btn_start.config(state="normal")
-                self.root.after(0, finish)
-
-        self.capture_thread = threading.Thread(target=worker, daemon=True)
-        self.capture_thread.start()
+    def poll_capture(self):
+        if self.capture_process.is_alive():
+            self.root.after(100, self.poll_capture)
+            return
+        self.capture_process.join()
+        try:
+            error = self.result_queue.get(timeout=0.2)
+        except queue.Empty:
+            error = f"キャプチャプロセスが終了しました（終了コード: {self.capture_process.exitcode}）。"
+        self.result_queue.close()
+        self.capture_process.close()
+        self.is_capturing = False
+        self.btn_start.config(state="normal")
+        if self.closing:
+            self.root.destroy()
+        elif error:
+            messagebox.showerror("エラー", f"キャプチャ中にエラーが発生しました:\n{error}")
 
     def on_quit(self):
         if self.is_capturing:
             if not messagebox.askyesno("確認", "キャプチャ中です。終了してもよろしいですか？"):
                 return
+            self.closing = True
+            self.stop_event.set()
+            self.btn_quit.config(state="disabled")
+            return
         self.root.destroy()
 
 

@@ -3,6 +3,9 @@
 import argparse
 import warnings
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.devices import face_device, face_providers, face_context_id
 
 import cv2
 import numpy as np
@@ -94,7 +97,7 @@ def detect_face_with_fallback(app, img, pad=80, target_size=640):
 def build_face_db(
         faces_dir: str,
         out_path: str,
-        device: str = "cuda",
+        device: str = "auto",
         app_name: str = "buffalo_l",
 ):
     """
@@ -112,7 +115,7 @@ def build_face_db(
     if FaceAnalysis is None:
         raise ImportError(
             "insightface がインポートできません。\n"
-            "まず `pip install insightface onnxruntime-gpu` などでインストールしてください。"
+            "まず `pip install -r requirements_for_mac.txt（Mac） / pip install -r requirements.txt（Windows）` などでインストールしてください。"
         )
 
     faces_dir = Path(faces_dir)
@@ -123,6 +126,7 @@ def build_face_db(
     print(f"[INFO] 出力: {out_path}")
     print(f"[INFO] モデル(app_name): {app_name}, device={device}")
 
+    device = face_device(device)
     use_cuda = device.startswith("cuda") and cuda_is_available()
     if device.startswith("cuda") and not use_cuda:
         raise RuntimeError(
@@ -130,17 +134,14 @@ def build_face_db(
             "CPUで実行する場合は --device cpu を指定してください。"
         )
 
-    providers = (
-        ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        if use_cuda
-        else ["CPUExecutionProvider"]
-    )
-    app = FaceAnalysis(name=app_name, providers=providers)
+    providers = face_providers(device)
+    app = FaceAnalysis(name=app_name, allowed_modules=["detection", "recognition"], providers=providers)
     if use_cuda:
         ensure_models_use_cuda(app)
         print("[INFO] InsightFaceの全モデルをCUDAで初期化しました。")
 
-    ctx_id = 0 if use_cuda else -1
+    ctx_id = face_context_id(device)
+    print(f"[INFO] 顔処理デバイス: {device}")
     app.prepare(ctx_id=ctx_id, det_size=(640, 640))
 
     person_names = []
@@ -213,8 +214,8 @@ def main():
                         help="顔画像のルートディレクトリ (person_name/xxx.jpg ...)")
     parser.add_argument("--out", type=str, default=str(DEFAULT_DB_PATH),
                         help="出力する npz パス")
-    parser.add_argument("--device", type=str, default="cuda",
-                        help="cuda or cpu")
+    parser.add_argument("--device", type=str, default="auto",
+                        help="auto, coreml (Mac GPU), cuda, cpu (mps uses CPU for InsightFace)")
     parser.add_argument("--app_name", type=str, default="buffalo_l",
                         help="insightface.app.FaceAnalysis の name")
 

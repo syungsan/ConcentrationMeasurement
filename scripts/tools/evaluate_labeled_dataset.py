@@ -9,6 +9,8 @@ import sqlite3
 import sys
 from dataclasses import replace
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.devices import default_device, resolve_device
 from typing import Any
 
 import matplotlib
@@ -78,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_label_std", type=float)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=0)
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", default=default_device())
     parser.add_argument(
         "--situation-source",
         choices=["true", "predicted"],
@@ -368,6 +370,7 @@ def save_regression_plots(frame: pd.DataFrame, output_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    args.device = resolve_device(args.device)
     root = repo_root()
     train_mod = load_train_module(root)
     load_ckpt, load_situation_model = load_infer_module(root)
