@@ -7,5 +7,8 @@ PySide6
 PyYAML
 pandas
 openpyxl
+matplotlib
+seaborn
+scikit-learn
 insightface
 onnxruntime-gpu

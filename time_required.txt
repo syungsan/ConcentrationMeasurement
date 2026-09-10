@@ -57,3 +57,7 @@ skeleton (45min-gru)
 所要時間: 20:37:54.26 (74274.26秒)
 fusion (45min-transformer)
 所要時間: 49:00:57.16 (176457.16秒)
+
+
+
+Orpheus (Ryzen7 5700X & RTX3060)
