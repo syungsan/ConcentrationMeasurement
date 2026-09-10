@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Literal, List
 
+from .devices import default_device
 import torch
 import torch.nn as nn
 from torchvision.models import resnet18, ResNet18_Weights
@@ -40,7 +41,7 @@ class Cfg:
     lr: float = 3e-4
     weight_decay: float = 1e-4
     seed: int = 42
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    device: str = default_device()
     num_workers: int = 4
 
     # sequence

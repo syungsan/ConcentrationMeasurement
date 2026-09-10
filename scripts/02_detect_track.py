@@ -2,7 +2,9 @@ import time
 SCRIPT_STARTED_AT = time.perf_counter()
 
 from pathlib import Path
+from lib.devices import resolve_device
 import subprocess
+import shlex
 import sys
 import yaml
 
@@ -67,6 +69,7 @@ def main():
 
     # Ultralytics track: generator でフレーム順に result が来る
     results = model.track(
+        device=resolve_device(detcfg.get("device", "auto")),
         source=str(raw_video),
         conf=float(detcfg["conf"]),
         iou=float(detcfg["iou"]),
@@ -128,8 +131,8 @@ def main():
             "--label-fps", "4",
         ]
         manual_command = (
-            f'& "{sys.executable}" "{build_script}" '
-            f'--dataset "{data_root}" --label-fps 4'
+            "& " + " ".join('"' + part.replace('"', '`"') + '"' for part in build_command)
+            if sys.platform == "win32" else shlex.join(build_command)
         )
         print("START proxy video with track IDs in a fresh process:")
         try:
@@ -149,11 +152,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-        import winsound
-        try:
-            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-        except Exception as e:
-            print(f"[WARN] 音声を再生できませんでした: {e}")
+        from lib.completion_sound import play_completion_sound
+        play_completion_sound()
     finally:
         elapsed = time.perf_counter() - SCRIPT_STARTED_AT
         hours, remainder = divmod(elapsed, 3600)

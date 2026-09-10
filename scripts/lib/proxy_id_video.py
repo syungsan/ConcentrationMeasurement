@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .platform_tools import find_video_tool, find_subtitle_ffmpeg
+
 import json
 import sqlite3
 import subprocess
@@ -12,10 +14,7 @@ def _repo_root() -> Path:
 
 
 def _ffmpeg_bin(name: str) -> Path:
-    path = _repo_root() / "ffmpeg" / "bin" / f"{name}.exe"
-    if not path.exists():
-        raise FileNotFoundError(f"{name} not found: {path}")
-    return path
+    return find_video_tool(_repo_root(), name)
 
 
 def _probe_video(path: Path) -> tuple[int, int, float]:
@@ -174,7 +173,7 @@ def make_proxy_with_track_ids(
         return 0
 
     tmp_video = output_video.with_name(output_video.stem + ".tmp.mp4")
-    ffmpeg = _ffmpeg_bin("ffmpeg")
+    ffmpeg = find_subtitle_ffmpeg(_repo_root())
     subprocess.run(
         [
             str(ffmpeg), "-y",

@@ -2,6 +2,8 @@ import time
 SCRIPT_STARTED_AT = time.perf_counter()
 
 from pathlib import Path
+from lib.devices import resolve_device
+import argparse
 import json
 import math
 import yaml
@@ -72,7 +74,18 @@ def print_progress(
     )
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_root", default=None, help="データセットのルート")
+    parser.add_argument(
+        "--no-face-exclusion", "--no_face_exclusion", action="store_true",
+        help="顔認識による除外処理を無効化（顔DB・顔認識モデルも読み込まない）",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     cfg = yaml.safe_load((repo_root / "config.yaml").read_text(encoding="utf-8"))
 
     # データ実体 root（未指定なら従来互換で repo_root）
@@ -95,16 +108,18 @@ def main():
     facecfg = cfg.get("face_exclusion", {})
     face_matcher = None
     face_max_frames = int(facecfg.get("max_frames", 8))
-    if bool(facecfg.get("enabled", False)):
+    if not args.no_face_exclusion and bool(facecfg.get("enabled", False)):
         face_db_path = rpath(repo_root, str(facecfg.get("db_path", "models/face_db.npz")))
         if not face_db_path.exists():
             raise FileNotFoundError(f"face DB not found: {face_db_path}")
         face_matcher = FaceDbMatcher(
             face_db_path,
             threshold=float(facecfg.get("similarity_threshold", 0.50)),
-            device=str(facecfg.get("device", "cuda")),
+            device=str(facecfg.get("device", "auto")),
         )
         print(f"face exclusion: enabled, DB={face_db_path}")
+    elif args.no_face_exclusion:
+        print("face exclusion: disabled by --no-face-exclusion")
 
     conn = connect(db_path)
     init_db(conn)
@@ -213,7 +228,7 @@ def main():
 
             crop = frame[y1i:y2i, x1i:x2i].copy()
             crop = resize_long_side(crop, crop_long)
-            if len(face_images) < face_max_frames:
+            if face_matcher is not None and len(face_images) < face_max_frames:
                 face_images.append(crop)
 
             # 保存ファイル名（小数の揺れ対策でミリ秒相当に丸め）
@@ -226,6 +241,7 @@ def main():
             pose_json = {}
             pr = pose_model.predict(
                 crop,
+                device=resolve_device(posecfg.get("device", "auto")),
                 conf=float(posecfg["conf"]),
                 imgsz=int(posecfg["imgsz"]),
                 verbose=False
@@ -287,11 +303,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-        import winsound
-        try:
-            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-        except Exception as e:
-            print(f"[WARN] 音声を再生できませんでした: {e}")
+        from lib.completion_sound import play_completion_sound
+        play_completion_sound()
     finally:
         elapsed = time.perf_counter() - SCRIPT_STARTED_AT
         hours, remainder = divmod(elapsed, 3600)

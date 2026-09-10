@@ -4,55 +4,150 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e9b775ae-2a56-42b2-ad21-2ae66494b1f6" name="変更" comment="">
+    <list default="true" id="95b61648-fdca-42aa-b948-aec72bf1bed1" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/commands.txt" beforeDir="false" afterPath="$PROJECT_DIR$/commands.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/concentration_measurement.iml" beforeDir="false" afterPath="$PROJECT_DIR$/concentration_measurement.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/config.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/launcher.py" beforeDir="false" afterPath="$PROJECT_DIR$/launcher.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements_for_mac.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements_for_mac.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/01_make_proxy.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/01_make_proxy.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/02_detect_track.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/02_detect_track.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/03_make_segments.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/03_make_segments.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/04_extract_frames_assets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/05_configure_research_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/05_configure_research_dataset.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/07_train.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/07_train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/08_realtime.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/08_realtime.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/09_video_offline.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/09_video_offline.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/10_aggregate_predictions.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/10_aggregate_predictions.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/11_intervention_analysis.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/11_intervention_analysis.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/face_exclusion.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/face_exclusion.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/model_defs.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/model_defs.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/lib/proxy_id_video.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/lib/proxy_id_video.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/build_face_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/build_face_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/build_labeling_package.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/capture_faces_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/capture_faces_gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/tools/evaluate_labeled_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/tools/evaluate_labeled_dataset.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="961" />
+    <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.1236630356752135" />
+      <entry key="MS500" value="3.07323055001651" />
+      <entry key="S2" value="6.308783370843624" />
+      <entry key="S5" value="8.989365703677308" />
+      <entry key="S10" value="11.289420198579299" />
+      <entry key="S30" value="14.114317602664244" />
+      <entry key="S60" value="16.608394167621498" />
+      <entry key="M2" value="22.291889907850052" />
+      <entry key="M5" value="32.86278587809797" />
+      <entry key="M10" value="42.02245566412849" />
+      <entry key="M15" value="48.412988235668244" />
+      <entry key="M30" value="65.67322566436562" />
+      <entry key="H1" value="97.36376682887166" />
+      <entry key="H2" value="136.45848646542197" />
+      <entry key="H4" value="169.24745620731971" />
+      <entry key="D1" value="207.7121804511225" />
+      <entry key="W1" value="215.63593717411646" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="0.0" />
+      <entry key="S5" value="0.0" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="0.0" />
+      <entry key="S60" value="0.0" />
+      <entry key="M2" value="0.0" />
+      <entry key="M5" value="0.0" />
+      <entry key="M10" value="0.0" />
+      <entry key="M15" value="0.0" />
+      <entry key="M30" value="0.0" />
+      <entry key="H1" value="0.0" />
+      <entry key="H2" value="0.0" />
+      <entry key="H4" value="0.0" />
+      <entry key="D1" value="0.0" />
+      <entry key="W1" value="0.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="1.0911095293488091" />
+      <entry key="MS500" value="3.046614106265759" />
+      <entry key="S2" value="6.293394287698354" />
+      <entry key="S5" value="8.980604381989345" />
+      <entry key="S10" value="11.28395010135571" />
+      <entry key="S30" value="14.112048483423852" />
+      <entry key="S60" value="16.607053519489835" />
+      <entry key="M2" value="22.290978995481332" />
+      <entry key="M5" value="32.862240770932026" />
+      <entry key="M10" value="42.022102744497616" />
+      <entry key="M15" value="48.41271041050654" />
+      <entry key="M30" value="65.67298258561281" />
+      <entry key="H1" value="97.36337395470989" />
+      <entry key="H2" value="136.45797449726822" />
+      <entry key="H4" value="169.24701774266111" />
+      <entry key="D1" value="207.71206382066066" />
+      <entry key="W1" value="215.63591909836154" />
+    </decayedShown>
+  </component>
   <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 5,
+  &quot;associatedIndex&quot;: 1,
   &quot;fromUser&quot;: false
 }</component>
-  <component name="ProjectId" id="3Ik6ky3O66yhpyLKWT2VfLS6HiW" />
+  <component name="ProjectId" id="3J8QNx4hzqMeu9PSLVKLs6kyFq8" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.build_face_db.executor&quot;: &quot;Run&quot;,
-    &quot;Python.capture_faces_gui.executor&quot;: &quot;Run&quot;,
-    &quot;Python.launcher.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.jshint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.jshint&quot;: &quot;&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;project.structure.last.edited&quot;: &quot;SDK&quot;,
-    &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
-    &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
-    &quot;python.packages.toolwindow.project.migrated.to.right.top.v2&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.06_label_gui.executor": "Run",
+    "Python.build_face_db.executor": "Run",
+    "Python.capture_faces_gui.executor": "Run",
+    "Python.launcher.executor": "Run",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "main",
+    "kotlin-language-version-configured": "true",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.jshint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.jshint": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "python.packages.toolwindow.project.migrated.to.right.top.v2": "true",
+    "show.migrate.to.gradle.popup": "false"
   }
-}</component>
+}]]></component>
+  <component name="PyDebuggerOptionsProvider">
+    <option name="myDebuggerBackend" value="DEBUGPY" />
+  </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
-      <recent name="D:\MyProjects\python_projects\concentration_measurement\concentration_measurement\scripts\tools" />
+      <recent name="$PROJECT_DIR$/datasets/sample/videos" />
+      <recent name="$PROJECT_DIR$/datasets/sample" />
     </key>
   </component>
   <component name="SharedIndexes">
@@ -63,16 +158,14 @@
     </attachedChunks>
   </component>
   <component name="TaskManager">
-    <task active="true" id="Default" summary="デフォルトタスク">
-      <changelist id="e9b775ae-2a56-42b2-ad21-2ae66494b1f6" name="変更" comment="" />
-      <created>1788296366137</created>
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="95b61648-fdca-42aa-b948-aec72bf1bed1" name="Changes" comment="" />
+      <created>1789040182440</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1788296366137</updated>
-      <workItem from="1788296369195" duration="1032000" />
-      <workItem from="1788299069117" duration="1830000" />
-      <workItem from="1788729325140" duration="2068000" />
-      <workItem from="1789047810529" duration="804000" />
+      <updated>1789040182440</updated>
+      <workItem from="1789040184980" duration="7395000" />
+      <workItem from="1789049728662" duration="8169000" />
     </task>
     <servers />
   </component>
@@ -80,8 +173,9 @@
     <option name="version" value="3" />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/concentration_measurement$build_face_db.coverage" NAME="build_face_db のカバレッジ結果" MODIFIED="1788729931100" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts/tools" />
-    <SUITE FILE_PATH="coverage/concentration_measurement$launcher.coverage" NAME="launcher のカバレッジ結果" MODIFIED="1788729542815" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/concentration_measurement$capture_faces_gui.coverage" NAME="capture_faces_gui のカバレッジ結果" MODIFIED="1788729685042" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts/tools" />
+    <SUITE FILE_PATH="coverage/concentration_measurement$06_label_gui.coverage" NAME="06_label_gui Coverage Results" MODIFIED="1789048310157" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts" />
+    <SUITE FILE_PATH="coverage/concentration_measurement$capture_faces_gui.coverage" NAME="capture_faces_gui Coverage Results" MODIFIED="1789051283756" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts/tools" />
+    <SUITE FILE_PATH="coverage/concentration_measurement$launcher.coverage" NAME="launcher Coverage Results" MODIFIED="1789057060745" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/concentration_measurement$build_face_db.coverage" NAME="build_face_db Coverage Results" MODIFIED="1789044482002" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/scripts/tools" />
   </component>
 </project>

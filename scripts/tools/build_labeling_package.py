@@ -274,6 +274,7 @@ def build_package(
         datasets: list[Path], output: Path,
         overwrite: bool, skip_runtime: bool, make_zip: bool,
 ) -> Path:
+    skip_runtime = skip_runtime or os.name != "nt"
     output = output.resolve()
     if output.exists():
         if not overwrite:
@@ -285,6 +286,13 @@ def build_package(
         shutil.copy2(REPO_ROOT / "launcher.py", output / "launcher.py")
         shutil.copy2(REPO_ROOT / "launch_labeler.bat", output / "launch_labeler.bat")
         shutil.copy2(REPO_ROOT / "config.yaml", output / "config.yaml")
+        (output / "requirements_labeler.txt").write_text("PySide6\nnumpy\nPyYAML\n", encoding="utf-8")
+        (output / "START_HERE.txt").write_text(
+            "Windows（同梱Pythonあり）: launch_labeler.bat\n"
+            "Mac / Pythonなしの配布: Tkinter対応Python 3.12の仮想環境で\n"
+            "python -m pip install -r requirements_labeler.txt\n"
+            "python launcher.py\n", encoding="utf-8",
+        )
         (output / "scripts" / "lib").mkdir(parents=True)
         shutil.copy2(REPO_ROOT / "scripts" / "06_label_gui.py", output / "scripts" / "06_label_gui.py")
         shutil.copy2(REPO_ROOT / "scripts" / "lib" / "situation.py", output / "scripts" / "lib" / "situation.py")

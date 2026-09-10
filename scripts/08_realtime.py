@@ -10,6 +10,7 @@ from typing import Dict, Optional, Literal, Tuple, List, Any
 
 import cv2
 import numpy as np
+from lib.devices import default_device, resolve_device
 import torch
 from ultralytics import YOLO
 
@@ -484,8 +485,13 @@ def parse_args():
     ap.set_defaults(use_situation_feature=None)
     ap.add_argument("--source", type=str, default="0", help="0(webcam) or video path")
     ap.add_argument("--data_root", type=str, default=None)
-    ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--device", type=str, default=default_device())
 
+    ap.add_argument(
+        "--no-face-exclusion", "--no_face_exclusion",
+        action="store_true",
+        help="顔認識による除外処理を無効化（顔DB・顔認識モデルも読み込まない）",
+    )
     ap.add_argument("--show", action="store_true", help="ウィンドウ表示")
     ap.add_argument("--save_assets", action="store_true", help="crop/pose を保存してDBに記録")
 
@@ -545,6 +551,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    args.device = resolve_device(args.device)
 
     here = Path(__file__).resolve()
     repo_root = here.parent.parent
@@ -577,7 +584,7 @@ def main():
 
     face_tracker = None
     face_cfg = cfg.get("face_exclusion", {})
-    if bool(face_cfg.get("enabled", False)):
+    if not args.no_face_exclusion and bool(face_cfg.get("enabled", False)):
         face_db_path = (repo_root / str(face_cfg.get("db_path", "models/face_db.npz"))).resolve()
         if not face_db_path.exists():
             raise FileNotFoundError(f"face DB not found: {face_db_path}")
@@ -592,6 +599,8 @@ def main():
             max_frames=int(face_cfg.get("max_frames", 8)),
         )
         print(f"face exclusion: enabled, DB={face_db_path}")
+    elif args.no_face_exclusion:
+        print("face exclusion: disabled by --no-face-exclusion")
 
     need_pose = (args.mode in ("skeleton", "fusion"))
     draw_pose = bool(args.draw_skeleton) and (args.mode in ("skeleton", "fusion"))
@@ -690,6 +699,7 @@ def main():
                 sample_count += 1
 
                 rs = det_model.track(
+                    device=args.device,
                     source=frame,
                     conf=float(detcfg["conf"]),
                     iou=float(detcfg["iou"]),
@@ -767,6 +777,7 @@ def main():
                         if (args.mode in ("skeleton", "fusion")) and (pose_model is not None):
                             pr = pose_model.predict(
                                 pose_crop,
+                                device=args.device,
                                 conf=float(posecfg["conf"]),
                                 imgsz=int(pose_imgsz),
                                 verbose=False

@@ -4,6 +4,8 @@ import warnings
 from collections import Counter, deque
 from pathlib import Path
 
+from .devices import face_device, face_providers, face_context_id
+
 import cv2
 import numpy as np
 
@@ -34,12 +36,13 @@ class FaceDbMatcher:
         db_path: Path,
         *,
         threshold: float,
-        device: str = "cuda",
+        device: str = "auto",
         det_size: tuple[int, int] = (640, 640),
     ) -> None:
         from insightface.app import FaceAnalysis
         import onnxruntime as ort
 
+        device = face_device(device)
         if device.startswith("cuda"):
             try:
                 import torch
@@ -50,11 +53,8 @@ class FaceDbMatcher:
                 pass
             if "CUDAExecutionProvider" not in ort.get_available_providers():
                 raise RuntimeError("顔DB照合用のCUDAExecutionProviderが利用できません。")
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            ctx_id = 0
-        else:
-            providers = ["CPUExecutionProvider"]
-            ctx_id = -1
+        providers = face_providers(device)
+        ctx_id = face_context_id(device)
 
         data = np.load(db_path, allow_pickle=True)
         self.names = [str(name) for name in data["names"].tolist()]

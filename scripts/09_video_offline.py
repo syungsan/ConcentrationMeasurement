@@ -15,12 +15,14 @@ from typing import Dict, Optional, Deque, Tuple, List, Any
 
 import cv2
 import numpy as np
+from lib.devices import default_device, resolve_device
 import torch
 from PIL import Image
 from collections import deque
 
 from ultralytics import YOLO
 
+from lib.platform_tools import find_video_tool
 from lib.image_roi import image_model_crop
 from lib.face_exclusion import FaceDbMatcher, OnlineFaceExclusionTracker
 from lib.runroot import get_data_root, rpath
@@ -69,7 +71,7 @@ def clamp_bbox(x1, y1, x2, y2, W, H):
 
 
 def ffmpeg_path(repo_root: Path) -> Path:
-    return (repo_root / "ffmpeg" / "bin" / "ffmpeg.exe").resolve()
+    return find_video_tool(repo_root)
 
 
 def mux_original_audio(
@@ -80,9 +82,10 @@ def mux_original_audio(
         output_video: Path,
 ) -> bool:
     """Copy annotated video stream and original audio into output_video."""
-    ffmpeg = ffmpeg_path(repo_root)
-    if not ffmpeg.exists():
-        print(f"[WARN] ffmpeg not found; annotated video will be silent: {ffmpeg}")
+    try:
+        ffmpeg = ffmpeg_path(repo_root)
+    except FileNotFoundError as exc:
+        print(f"[WARN] annotated video will be silent: {exc}")
         return False
     tmp_out = output_video.with_name(output_video.stem + ".mux.tmp" + output_video.suffix)
     if tmp_out.exists():
@@ -607,7 +610,7 @@ def parse_args():
         help="Keep situation estimation/logging/display, but exclude it from concentration prediction.",
     )
     ap.set_defaults(use_situation_feature=None)
-    ap.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--device", type=str, default=default_device())
 
     ap.add_argument("--data_root", type=str, default=None)
     ap.add_argument("--video", type=str, default=None)
@@ -682,6 +685,7 @@ def parse_args():
 # -------------------------
 def main():
     args = parse_args()
+    args.device = resolve_device(args.device)
 
     here = Path(__file__).resolve()
     repo_root = here.parent.parent
@@ -835,6 +839,7 @@ def main():
         )
 
     results = det.track(
+        device=args.device,
         source=str(video_path),
         stream=True,
         persist=True,
@@ -931,7 +936,7 @@ def main():
                 ph, pw = crop_pose_in.shape[:2]
                 ch, cw = crop.shape[:2]
 
-                pr = pose.predict(crop_pose_in, conf=pose_conf, imgsz=pose_imgsz, verbose=False)[0]
+                pr = pose.predict(crop_pose_in, device=args.device, conf=pose_conf, imgsz=pose_imgsz, verbose=False)[0]
 
                 arr = make_pose_empty(K=int(train_cfg.K), D=int(train_cfg.pose_dim))
                 if pr.keypoints is not None and len(pr.keypoints.data) > 0:
@@ -1222,11 +1227,8 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-        import winsound
-        try:
-            winsound.PlaySound("mei_kara_mei_switch1.wav", winsound.SND_FILENAME)
-        except Exception as e:
-            print(f"[WARN] 音声を再生できませんでした: {e}")
+        from lib.completion_sound import play_completion_sound
+        play_completion_sound()
     finally:
         elapsed = time.perf_counter() - SCRIPT_STARTED_AT
         hours, remainder = divmod(elapsed, 3600)
