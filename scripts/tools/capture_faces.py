@@ -2,6 +2,7 @@
 
 import multiprocessing as mp
 import queue
+import subprocess
 import traceback
 import time
 import os
@@ -12,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.devices import face_device, face_providers, face_context_id
 
 import cv2
-import numpy as np
+# import numpy as np
 
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -214,10 +215,12 @@ def capture_faces(
         cv2.destroyAllWindows()
     print(f"[DONE] 保存した画像枚数: {saved_count}")
 
-    # Windows なら収録フォルダを自動で開く
+    # OSに合わせて収録フォルダを自動で開く
     try:
         if os.name == "nt":
             os.startfile(str(person_dir.resolve()))
+        elif sys.platform == "darwin":
+            subprocess.run(["/usr/bin/open", str(person_dir.resolve())], check=True)
     except Exception as e:
         print(f"[WARN] フォルダを開く際にエラー: {e}")
 
@@ -261,7 +264,7 @@ class FaceCaptureGUI:
         # 各種変数
         self.var_name = tk.StringVar()
         self.var_out_root = tk.StringVar(value=str(DEFAULT_FACES_DIR))
-        self.var_duration = tk.DoubleVar(value=15.0)
+        self.var_duration = tk.DoubleVar(value=30.0)
         self.var_cam = tk.IntVar(value=0)
         self.var_device = tk.StringVar(
             value="auto"
@@ -409,4 +412,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # 子プロセスの復元に必要なcapture_workerの定義後、GUI起動前に分岐する。
+    mp.freeze_support()
     main()

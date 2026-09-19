@@ -84,6 +84,26 @@ python -m pip install -r requirements.txt
 
 PyTorchはCPU版または使用するCUDA環境に合う版を別途インストールしてください。
 
+## Ubuntu / LinuxでCUDAを使う場合
+
+仮想環境を作成し、依存関係とCUDA対応PyTorchをインストールします。CUDA 12.8向けの例:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+```
+
+`config.yaml`の`device: "auto"`と、各コマンドの`--device auto`では、OSに関係なくCUDAを自動判定します。選択順はCUDA、macOSのMPS、CPUです。顔認証はONNX Runtimeの`CUDAExecutionProvider`を独立して判定します。
+
+CUDAの認識状態は次のコマンドで確認できます。
+
+```bash
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```
+
 ## 導入確認
 
 主要モジュールを読み込めることを確認します。

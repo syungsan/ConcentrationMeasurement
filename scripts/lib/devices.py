@@ -2,13 +2,24 @@
 import sys
 
 
-def default_device() -> str:
-    import torch
-    if torch.cuda.is_available():
+def select_device(*, cuda_available: bool, mps_available: bool = False) -> str:
+    """Choose the fastest available backend without depending on the host OS."""
+    if cuda_available:
         return "cuda"
-    if torch.backends.mps.is_available():
+    if mps_available:
         return "mps"
     return "cpu"
+
+
+def default_device() -> str:
+    import torch
+    mps_backend = getattr(torch.backends, "mps", None)
+    return select_device(
+        cuda_available=bool(torch.cuda.is_available()),
+        mps_available=bool(
+            mps_backend is not None and mps_backend.is_available()
+        ),
+    )
 
 
 def resolve_device(device: str = "auto") -> str:
