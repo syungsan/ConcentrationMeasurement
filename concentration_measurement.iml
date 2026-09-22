@@ -4,6 +4,27 @@
     <exclude-output />
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/scripts" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/.agents" />
+      <excludeFolder url="file://$MODULE_DIR$/WPy64-312101" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260227_unnan_nishi_5-1_1" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260227_unnan_nishi_5-1_2" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260311_unnan_nishi_5-1_1" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260313_unnan_nishi_5-1_1_a" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260313_unnan_nishi_5-1_1_b" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260313_unnan_nishi_5-1_2_a" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260313_unnan_nishi_5-1_2_b" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260713_unnan_nishi_2-1_1_a" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260713_unnan_nishi_2-1_1_b" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260713_unnan_nishi_5-1_1" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260714_unnan_nishi_3-1_1_a" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260714_unnan_nishi_3-1_1_b" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260714_unnan_nishi_6-1_1_a" />
+      <excludeFolder url="file://$MODULE_DIR$/datasets/20260714_unnan_nishi_6-1_1_b" />
+      <excludeFolder url="file://$MODULE_DIR$/faces" />
+      <excludeFolder url="file://$MODULE_DIR$/ffmpeg" />
+      <excludeFolder url="file://$MODULE_DIR$/inputs" />
+      <excludeFolder url="file://$MODULE_DIR$/models/tadano's" />
+      <excludeFolder url="file://$MODULE_DIR$/outputs" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

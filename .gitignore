@@ -183,7 +183,7 @@ cython_debug/
 .cursorindexingignore
 
 
-ffmpeg/
+ffmpeg/*
 models/*
 datasets/*
 outputs/
@@ -191,3 +191,8 @@ inputs/
 WPy64-312101/
 realtime/
 faces/
+.agents/
+.codex_spreadsheet_work/
+.codex_work/
+.idea/
+concentration_measurement.iml
