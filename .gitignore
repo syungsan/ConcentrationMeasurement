@@ -196,3 +196,4 @@ faces/
 .codex_work/
 .idea/
 concentration_measurement.iml
+tests/
