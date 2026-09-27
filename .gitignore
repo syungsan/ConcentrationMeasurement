@@ -195,6 +195,6 @@ faces/
 .codex_spreadsheet_work/
 .codex_work/
 .idea/
-concentration_measurement.iml
+ConcentrationMeasurement.iml
 tests/
 __pycache__/
