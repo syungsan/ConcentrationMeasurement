@@ -1,6 +1,7 @@
 # capture_faces_gui.py
 
 import multiprocessing as mp
+import math
 import queue
 import subprocess
 import traceback
@@ -16,7 +17,7 @@ import cv2
 # import numpy as np
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -89,6 +90,7 @@ def capture_faces(
         screen_w: int | None = None,
         screen_h: int | None = None,
         stop_event=None,
+        video_path: str | None = None,
 ):
     """
     顔画像収集（独立プロセスのメインスレッドで実行する）
@@ -104,7 +106,8 @@ def capture_faces(
     person_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[INFO] 出力ディレクトリ: {person_dir.resolve()}")
-    print(f"[INFO] 収録時間: {duration} 秒")
+    if video_path is None:
+        print(f"[INFO] 収録時間: {duration} 秒")
     print("[INFO] q または ESC で中断できます。")
 
     device = face_device(device)
@@ -125,16 +128,21 @@ def capture_faces(
     print(f"[INFO] 顔処理デバイス: {device}")
     app.prepare(ctx_id=ctx_id, det_size=det_size)
 
-    print(f"[INFO] カメラ {cam_index} をオープンします...")
-    cap = cv2.VideoCapture(cam_index)
+    source = video_path if video_path is not None else cam_index
+    print(f"[INFO] 入力 {source} をオープンします...")
+    cap = cv2.VideoCapture(source)
     if not cap.isOpened():
         cap.release()
-        raise RuntimeError(f"Failed to open camera: {cam_index}")
+        raise RuntimeError(f"入力を開けません: {source}")
 
     try:
         start_time = time.time()
-        last_save_time = 0.0
+        last_save_time = -float("inf")
         saved_count = 0
+        frame_index = 0
+        fps = cap.get(cv2.CAP_PROP_FPS) if video_path is not None else 0.0
+        if video_path is not None and (not math.isfinite(fps) or fps <= 0):
+            raise RuntimeError("動画のFPSを取得できません。別の動画形式でお試しください。")
 
         win_name = f"Capture faces: {person_name}"
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
@@ -145,7 +153,8 @@ def capture_faces(
         while stop_event is None or not stop_event.is_set():
             ret, frame = cap.read()
             if not ret:
-                print("[WARN] フレーム取得に失敗しました。終了します。")
+                print("[INFO] 動画の読み込みを終了しました。" if video_path is not None
+                      else "[WARN] フレーム取得に失敗しました。終了します。")
                 break
 
             if first_frame and screen_w is not None and screen_h is not None:
@@ -157,7 +166,11 @@ def capture_faces(
 
             now = time.time()
             elapsed = now - start_time
-            if elapsed > duration:
+            if video_path is not None:
+                # 処理速度によらず、動画内の時間で保存間隔を判定する。
+                elapsed = frame_index / fps
+                frame_index += 1
+            if video_path is None and elapsed > duration:
                 print("[INFO] 指定時間に到達したので終了します。")
                 break
 
@@ -187,11 +200,11 @@ def capture_faces(
                     face_crop = frame[y1:y2, x1:x2]
 
                     # 一定間隔ごとに保存（min_interval 秒）
-                    if now - last_save_time >= min_interval:
+                    if elapsed - last_save_time >= min_interval:
                         save_path = person_dir / f"{saved_count:04d}.jpg"
                         cv2.imwrite(str(save_path), face_crop)
                         saved_count += 1
-                        last_save_time = now
+                        last_save_time = elapsed
                         print(f"[SAVE] {save_path.name} (t={elapsed:.1f}s)")
 
                     # 画面上に矩形を表示
@@ -199,7 +212,8 @@ def capture_faces(
 
             # 経過時間も表示
             cv2.putText(
-                frame, f"{elapsed:4.1f}s / {duration:.1f}s",
+                frame, (f"{elapsed:4.1f}s" if video_path is not None
+                        else f"{elapsed:4.1f}s / {duration:.1f}s"),
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA
             )
@@ -248,7 +262,7 @@ class FaceCaptureGUI:
         self.screen_h = root.winfo_screenheight()
 
         # ウィンドウ自体も少し小さめで中央に
-        win_w, win_h = 600, 310
+        win_w, win_h = 600, 410
         x = (self.screen_w - win_w) // 2
         y = (self.screen_h - win_h) // 2
         self.root.geometry(f"{win_w}x{win_h}+{x}+{y}")
@@ -266,6 +280,8 @@ class FaceCaptureGUI:
         self.var_out_root = tk.StringVar(value=str(DEFAULT_FACES_DIR))
         self.var_duration = tk.DoubleVar(value=30.0)
         self.var_cam = tk.IntVar(value=0)
+        self.var_source = tk.StringVar(value="camera")
+        self.var_video = tk.StringVar()
         self.var_device = tk.StringVar(
             value="auto"
         )
@@ -292,13 +308,15 @@ class FaceCaptureGUI:
 
         # 収録時間
         ttk.Label(frame, text="収録時間(秒):").grid(row=2, column=0, sticky="e", **pad)
-        ttk.Entry(frame, textvariable=self.var_duration, width=10).grid(
+        self.entry_duration = ttk.Entry(frame, textvariable=self.var_duration, width=10)
+        self.entry_duration.grid(
             row=2, column=1, sticky="w", **pad
         )
 
         # カメラインデックス
         ttk.Label(frame, text="カメラID:").grid(row=3, column=0, sticky="e", **pad)
-        ttk.Entry(frame, textvariable=self.var_cam, width=10).grid(
+        self.entry_cam = ttk.Entry(frame, textvariable=self.var_cam, width=10)
+        self.entry_cam.grid(
             row=3, column=1, sticky="w", **pad
         )
 
@@ -315,15 +333,47 @@ class FaceCaptureGUI:
         ttk.Radiobutton(dev_frame, text="CPU", value="cpu",
                         variable=self.var_device).pack(side="left")
 
+        ttk.Label(frame, text="入力:").grid(row=5, column=0, sticky="e", **pad)
+        source_frame = ttk.Frame(frame)
+        source_frame.grid(row=5, column=1, sticky="w", **pad)
+        for label, value in (("カメラ", "camera"), ("動画ファイル", "video")):
+            ttk.Radiobutton(source_frame, text=label, value=value,
+                            variable=self.var_source, command=self.update_source_state).pack(side="left")
+
+        ttk.Label(frame, text="動画ファイル:").grid(row=6, column=0, sticky="e", **pad)
+        video_frame = ttk.Frame(frame)
+        video_frame.grid(row=6, column=1, sticky="ew", **pad)
+        self.entry_video = ttk.Entry(video_frame, textvariable=self.var_video, width=35)
+        self.entry_video.pack(side="left", fill="x", expand=True)
+        self.btn_video = ttk.Button(video_frame, text="参照...", command=self.select_video)
+        self.btn_video.pack(side="left", padx=5)
+        self.update_source_state()
+
         # ボタン
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=5, column=0, columnspan=2, pady=15)
+        btn_frame.grid(row=7, column=0, columnspan=2, pady=15)
 
         self.btn_start = ttk.Button(btn_frame, text="開始", command=self.on_start)
         self.btn_start.pack(side="left", padx=5)
 
         self.btn_quit = ttk.Button(btn_frame, text="終了", command=self.on_quit)
         self.btn_quit.pack(side="left", padx=5)
+
+    def update_source_state(self):
+        is_video = self.var_source.get() == "video"
+        for widget in (self.entry_duration, self.entry_cam):
+            widget.config(state="disabled" if is_video else "normal")
+        for widget in (self.entry_video, self.btn_video):
+            widget.config(state="normal" if is_video else "disabled")
+
+    def select_video(self):
+        path = filedialog.askopenfilename(
+            parent=self.root, title="入力する動画を選択",
+            filetypes=[("動画ファイル", "*.mp4 *.avi *.mov *.mkv *.wmv *.m4v *.webm"),
+                       ("すべてのファイル", "*.*")],
+        )
+        if path:
+            self.var_video.set(path)
 
     def on_start(self):
         if self.is_capturing:
@@ -339,15 +389,29 @@ class FaceCaptureGUI:
             messagebox.showwarning("警告", "出力ルートを入力してください。")
             return
 
-        try:
-            duration = float(self.var_duration.get())
-            if duration <= 0:
-                raise ValueError
-        except Exception:
-            messagebox.showwarning("警告", "収録時間は正の数で入力してください。")
-            return
-
-        cam_index = int(self.var_cam.get())
+        video_path = None
+        duration = 30.0
+        cam_index = 0
+        if self.var_source.get() == "video":
+            video_path = self.var_video.get().strip()
+            if not video_path or not Path(video_path).is_file():
+                messagebox.showwarning("警告", "存在する動画ファイルを選択してください。")
+                return
+        else:
+            try:
+                duration = float(self.var_duration.get())
+                if not math.isfinite(duration) or duration <= 0:
+                    raise ValueError
+            except (ValueError, tk.TclError):
+                messagebox.showwarning("警告", "収録時間は正の数で入力してください。")
+                return
+            try:
+                cam_index = int(self.var_cam.get())
+                if cam_index < 0:
+                    raise ValueError
+            except (ValueError, tk.TclError):
+                messagebox.showwarning("警告", "カメラIDは0以上の整数で入力してください。")
+                return
         device = self.var_device.get()
 
         # ボタン無効化
@@ -361,6 +425,7 @@ class FaceCaptureGUI:
             duration=duration, device=device, det_size=(640, 640),
             margin=20, min_interval=0.5,
             screen_w=self.screen_w, screen_h=self.screen_h,
+            video_path=video_path,
         )
         self.capture_process = self.process_context.Process(
             target=capture_worker,
