@@ -1,8 +1,8 @@
-python scripts/01_make_proxy.py --data_root datasets/lesson_001
-python scripts/02_detect_track.py --data_root datasets/lesson_001
-python scripts/03_make_segments.py --data_root datasets/lesson_001
-python scripts/04_extract_frames_assets.py --data_root datasets/lesson_001
-python scripts/05_configure_research_dataset.py datasets/lesson_001 school_a 5 5A (normal or pilot_post) --minutes-after 0
+python.exe scripts/01_make_proxy.py --data_root datasets/lesson_001
+python.exe scripts/02_detect_track.py --data_root datasets/lesson_001
+python.exe scripts/03_make_segments.py --data_root datasets/lesson_001
+python.exe scripts/04_extract_frames_assets.py --data_root datasets/lesson_001
+python.exe scripts/05_configure_research_dataset.py datasets/lesson_001 school_a 5 5A (normal or pilot_post) --minutes-after 0
 
 python.exe scripts\09_video_offline.py --ckpt models\pre_test_2_transformer_fusion.pt --mode fusion --video inputs\20260714_unnan_nishi_6-1_2_full.mp4 --annotate_out outputs\annotated.mp4 --log_db outputs\pred_log.sqlite --sample_fps 2 --infer_step_sec 1
 python.exe scripts\tools\apply_ab_interval.py --db outputs\pred_log.sqlite --start 29:00 --end 31:13

@@ -25,6 +25,7 @@ from lib.infer import (
     predict_situation_probs, SituationProbabilitySmoother, clamp_1to7,
 )
 from lib.situation import SITUATIONS
+from lib.class_avg_graph import ClassAverageGraph
 
 Mode = Literal["image", "skeleton", "fusion"]
 SITUATION_DISPLAY = ("listen", "write", "discuss")
@@ -502,6 +503,15 @@ def parse_args():
     ap.add_argument("--fullscreen", action="store_true", help="起動時に全画面（fキーでトグル可）")
 
     # lightweight controls
+    detection_model = ap.add_mutually_exclusive_group()
+    detection_model.add_argument(
+        "--light-det", "--light_det", action="store_true",
+        help="人物検出を軽量な models/yolov8n.pt に切り替える",
+    )
+    detection_model.add_argument(
+        "--det-model", "--det_model", type=str, default=None,
+        help="人物検出モデルのパス（相対パスはプロジェクト基準。省略時はconfig）",
+    )
     ap.add_argument("--ttl", type=float, default=3.0, help="表示/状態保持TTL秒（点滅抑制）")
     ap.add_argument("--sample_fps", type=float, default=0.0, help="0ならconfig。軽量化なら 1～2 推奨")
     ap.add_argument("--det_imgsz", type=int, default=0, help="0ならconfig。軽量化なら 640/960 推奨")
@@ -580,7 +590,14 @@ def main():
     det_imgsz = int(args.det_imgsz) if args.det_imgsz > 0 else int(detcfg["imgsz"])
     pose_imgsz = int(args.pose_imgsz) if args.pose_imgsz > 0 else int(posecfg["imgsz"])
 
-    det_model = YOLO(str((repo_root / detcfg["model"]).resolve()))
+    det_model_path = Path(
+        "models/yolov8n.pt" if args.light_det else (args.det_model or detcfg["model"])
+    )
+    if not det_model_path.is_absolute():
+        det_model_path = repo_root / det_model_path
+    det_model_path = det_model_path.resolve()
+    print(f"[realtime] detection model: {det_model_path}")
+    det_model = YOLO(str(det_model_path))
 
     face_tracker = None
     face_cfg = cfg.get("face_exclusion", {})
@@ -669,6 +686,7 @@ def main():
     frame_idx = 0
     sample_count = 0
     class_avg_ema: Optional[float] = None
+    class_avg_graph = ClassAverageGraph()
 
     tracker_cfg = detcfg["tracker"]
     tracker_path = (repo_root / tracker_cfg).resolve()
@@ -975,6 +993,9 @@ def main():
                         line_thick=int(args.skel_line),
                     )
 
+            class_avg_graph.update(t, avg_display if scores else None)
+            class_avg_graph.draw(frame, t, float(args.class_scale), int(args.class_thick))
+
             if args.show:
                 cv2.imshow(args.win_name, frame)
                 k = cv2.waitKey(1) & 0xFF
@@ -1002,7 +1023,7 @@ if __name__ == "__main__":
 
 # examples:
 # stable_id + fullscreen toggle
-# python scripts/08_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen --stable_id --data_root realtime
+# python scripts/08_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen --stable_id --data_root realtime --no_face_exclusion --light-det
 #
 # stable_id + mosaic (skeleton/fusion)
 # python scripts/08_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --mosaic_eyes --data_root realtime

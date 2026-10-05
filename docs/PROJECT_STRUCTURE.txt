@@ -13,44 +13,43 @@ ConcentrationMeasurement/
 ├── launcher.py                    # データセット選択・ラベリング起動用GUI
 ├── launch_labeler.bat              # Windows用の起動バッチ
 ├── config.yaml                    # 動画処理・検出・姿勢推定・顔除外の設定
-├── 〇README.md                      # 開発環境の導入手順
-├── requirements.txt               # Windows向け依存パッケージ
-├── requirements_for_mac.txt       # Mac向け依存パッケージ
+├── ☑README.md                      # 開発環境の導入手順
+├── ☑requirements.txt               # Windows向け依存パッケージ
+├── ☑requirements_for_mac.txt       # Mac向け依存パッケージ
 │
 ├── scripts/                       # 処理プログラム本体（後述）
 ├── tests/                         # 自動テスト
 ├── docs/                          # 操作・分析ドキュメント
 │
 ├── inputs/                        # 推論などに使用する入力動画
-├── datasets/                      # 授業ごとの学習・採点用データ
+├── ☑datasets/                      # 授業ごとの学習・採点用データ
 │   └── <データセット名>/
 │       ├── videos/                # 元動画・処理用動画・ID表示付き動画
 │       ├── db/                    # 検出結果・区間・ラベルなどのSQLite DB
 │       └── assets/                # 人物切り抜き画像・姿勢データ
-├── faces/                         # 顔照合用の人物別画像
+├── ☑faces/                         # 顔照合用の人物別画像
 │   └── <人物名>/                  # 収集した顔画像の保存先
 ├── models/                        # 学習済みモデル・顔照合DB
-│   ├── face_db.npz                # 登録人物の顔特徴量
-│   ├── gru_sample.pt              # GRUモデルのチェックポイント
-│   ├── yolov8n.pt                 # 軽量な人物検出モデル
-│   ├── yolov8x.pt                 # 大規模な人物検出モデル
-│   ├── yolov8n-pose.pt            # 軽量な姿勢推定モデル
-│   └── yolov8x-pose.pt            # 大規模な姿勢推定モデル
+│   ├── ☑face_db.npz                # 登録人物の顔特徴量
+│   ├── ☑yolov8n.pt                 # 軽量な人物検出モデル
+│   ├── ☑yolov8x.pt                 # 大規模な人物検出モデル
+│   ├── ☑yolov8n-pose.pt            # 軽量な姿勢推定モデル
+│   └── ☑yolov8x-pose.pt            # 大規模な姿勢推定モデル
 ├── outputs/                       # 推論結果・集計・レポートの保存先
 │
-├── ffmpeg/                        # 動画変換用ツール
-├── WPy64-312101/                   # 同梱のWindows用Python環境
-├── .venv/                         # Python仮想環境
-├── .git/                          # Gitの変更履歴・管理情報
-├── .gitignore                     # Git管理から除外する対象
-├── .gitattributes                 # Gitのファイル取り扱い設定
-├── .idea/                         # IDEのプロジェクト設定
-├── ConcentrationMeasurement.iml   # IDE用のモジュール設定
+├── ☑ffmpeg/                        # 動画変換用ツール
+├── ☑WPy64-312101/                   # 同梱のWindows用Python環境
+├── ☑.venv/                         # Python仮想環境
+├── ☑.git/                          # Gitの変更履歴・管理情報
+├── ☑.gitignore                     # Git管理から除外する対象
+├── ☑.gitattributes                 # Gitのファイル取り扱い設定
+├── ☑.idea/                         # IDEのプロジェクト設定
+├── ☑ConcentrationMeasurement.iml   # IDE用のモジュール設定
 │
 ├── commands.txt                   # 実行コマンドのメモ
-├── time_required.txt              # 処理時間の記録
-├── part-time_job_assignment.txt   # 採点作業の担当割り当て
-└── mei_kara_mei_switch1.wav        # 処理完了の通知音
+├── ☑time_required.txt              # 処理時間の記録
+├── ☑part-time_job_assignment.txt   # 採点作業の担当割り当て
+└── ☑mei_kara_mei_switch1.wav        # 処理完了の通知音
 
 プログラムの構成
 

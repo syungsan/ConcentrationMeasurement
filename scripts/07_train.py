@@ -27,6 +27,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms import functional as TF
 
 from lib.image_roi import image_model_crop
 from lib.pose_norm import normalize_pose_kpts
@@ -247,6 +248,17 @@ def resolve_asset_path(p: str, *, dataset_root: Path, db_path: Path) -> Optional
     return None
 
 
+def horizontal_flip_pose_sequence(poses: np.ndarray) -> np.ndarray:
+    """Mirror normalized COCO-17 poses [T,K,D], including confidence swaps."""
+    if poses.ndim != 3 or poses.shape[1] != 17 or poses.shape[2] < 2:
+        raise ValueError("Horizontal flip requires COCO-17 poses [T,17,D>=2]")
+    # nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles
+    order = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
+    mirrored = poses[:, order, :].copy()
+    mirrored[:, :, 0] *= -1.0  # normalization centers x around zero
+    return mirrored
+
+
 # -------------------------
 # SQLite multi-db Dataset
 # -------------------------
@@ -266,9 +278,6 @@ class MultiSQLiteSegmentDataset(Dataset):
         if is_train:
             aug += [
                 transforms.RandomResizedCrop(cfg.img_size, scale=(0.8, 1.0)),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.35, hue=0.03),
-                transforms.RandomGrayscale(p=0.25),
             ]
         else:
             aug += [
@@ -283,6 +292,12 @@ class MultiSQLiteSegmentDataset(Dataset):
             ]
         )
 
+        # Sample once per segment: no artificial frame-to-frame flicker.
+        self.color_jitter = transforms.ColorJitter(
+            brightness=0.25, contrast=0.25, saturation=0.35, hue=0.03
+        )
+        if is_train and cfg.mode in ("skeleton", "fusion") and cfg.K != 17:
+            raise ValueError("Training horizontal flip requires COCO-17 keypoints")
         self._conns: Dict[int, sqlite3.Connection] = {}
 
     def _get_conn(self, db_i: int) -> sqlite3.Connection:
@@ -382,6 +397,15 @@ class MultiSQLiteSegmentDataset(Dataset):
 
         frames = None
         poses = None
+        flip = self.is_train and random.random() < 0.5
+        jitter_params = None
+        grayscale = False
+        if self.is_train and self.cfg.mode in ("image", "fusion"):
+            jitter = self.color_jitter
+            jitter_params = transforms.ColorJitter.get_params(
+                jitter.brightness, jitter.contrast, jitter.saturation, jitter.hue
+            )
+            grayscale = random.random() < 0.25
 
         if self.cfg.mode in ("image", "fusion"):
             imgs: List[torch.Tensor] = []
@@ -390,6 +414,22 @@ class MultiSQLiteSegmentDataset(Dataset):
                 p = self._resolve_path(db_i, crop_path)
                 im = Image.open(p).convert("RGB")
                 im = Image.fromarray(image_model_crop(np.asarray(im), self.cfg.image_roi))
+                if flip:
+                    im = TF.hflip(im)
+                if jitter_params is not None:
+                    order, brightness, contrast, saturation, hue = jitter_params
+                    adjustments = (
+                        (TF.adjust_brightness, brightness),
+                        (TF.adjust_contrast, contrast),
+                        (TF.adjust_saturation, saturation),
+                        (TF.adjust_hue, hue),
+                    )
+                    for op in order:
+                        adjust, factor = adjustments[int(op)]
+                        if factor is not None:
+                            im = adjust(im, factor)
+                if grayscale:
+                    im = TF.rgb_to_grayscale(im, num_output_channels=3)
                 imgs.append(self.img_tf(im))
             frames = torch.stack(imgs, dim=0)  # [T,3,H,W]
 
@@ -398,7 +438,10 @@ class MultiSQLiteSegmentDataset(Dataset):
             for i in idxs:
                 _t, _crop_path, pose_path = rows[i]
                 ps.append(self._load_pose(db_i, pose_path))
-            poses = torch.from_numpy(np.stack(ps, axis=0))  # [T,K,3]
+            pose_sequence = np.stack(ps, axis=0)
+            if flip:
+                pose_sequence = horizontal_flip_pose_sequence(pose_sequence)
+            poses = torch.from_numpy(pose_sequence)  # [T,K,3]
 
         return frames, poses, situation, float(y)
 
@@ -1164,9 +1207,9 @@ if __name__ == "__main__":
 # command
 # 初期小規模実験
 # 複数評価者の合意DBを使う場合：
-# python scripts\07_train.py --data_roots datasets\lesson_train --db_paths merged\lesson_train.sqlite --label_source consensus --split_unit window --mode skeleton --save_name models\pilot_class.pt
+# python.exe scripts\07_train.py --data_roots datasets\lesson_train --db_paths merged\lesson_train.sqlite --label_source consensus --split_unit window --mode skeleton --save_name models\pilot_class.pt
 # 評価者が1名だけの場合：
-# python scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode skeleton --save_name models\pilot_class.pt
+# python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode skeleton --save_name models\pilot_class.pt
 # python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pilot_fusion_stable.pt
 
 # --temporal transformer

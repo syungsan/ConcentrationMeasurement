@@ -31,6 +31,7 @@ from lib.infer import (
     predict_situation_probs, SituationProbabilitySmoother, clamp_1to7,
 )
 from lib.situation import SITUATIONS
+from lib.class_avg_graph import ClassAverageGraph
 from lib.pose_norm import normalize_pose_kpts
 
 SITUATION_DISPLAY = ("listen", "write", "discuss")
@@ -823,6 +824,7 @@ def main():
     tracks: Dict[int, TrackState] = {}
 
     class_avg_ema: Optional[float] = None
+    class_avg_graph = ClassAverageGraph()
 
     mapper = None
     if args.stable_id:
@@ -1155,6 +1157,9 @@ def main():
                     radius=int(args.skel_radius),
                     line_thick=int(args.skel_line),
                 )
+
+        class_avg_graph.update(t, avg_display if scores_now and class_avg_ema is not None else None)
+        class_avg_graph.draw(frame, t, float(args.class_scale), int(args.class_thick))
 
         # log DB
         for tid, st in alive:

@@ -126,6 +126,16 @@ python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_
 - [評価指標](docs/METRICS_GUIDE.md)
 - [トラブルシューティング](docs/TROUBLESHOOTING.md)
 
+## リアルタイム推論の人物検出モデルを切り替える
+
+通常の `08_realtime.py` のコマンドに `--light-det` を追加すると、人物検出を軽量な `models/yolov8n.pt` に切り替えます。省略時は `config.yaml` の `detection_tracking.model` を使用します。
+
+```bash
+python scripts/08_realtime.py --ckpt models/your_model.pt --show --light-det
+```
+
+任意の重みは `--det-model models/your_detector.pt` で指定できます（相対パスはプロジェクト基準、絶対パスも使用可能）。`--light-det` と `--det-model` は同時には指定できません。姿勢推定モデルと集中度推定モデルはこのオプションでは変更されません。
+
 ## リアルタイム推論で顔認識による除外を省く
 
 通常の `08_realtime.py` のコマンドに `--no-face-exclusion` を追加します。
