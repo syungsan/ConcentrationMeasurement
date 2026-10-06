@@ -630,8 +630,8 @@ def parse_args():
         help="Temporal input sampling rate. 0 uses config.yaml sampling.sample_fps (default: 2 fps).",
     )
     ap.add_argument(
-        "--infer_step_sec", type=float, default=1.0,
-        help="Seconds between predictions after a full temporal window is available (default: 1.0).",
+        "--infer_step_sec", type=float, default=0.5,
+        help="Seconds between predictions after a full temporal window is available (default: 0.5).",
     )
     ap.add_argument("--save_assets", action="store_true")
     ap.add_argument("--assets_dir", type=str, default="outputs/assets")
@@ -1240,10 +1240,10 @@ if __name__ == "__main__":
         minutes, seconds = divmod(remainder, 60)
         print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
-# command
+# common command
 
 # 目モザイク + 骨格線 + stable_id（おすすめ）
-# python scripts/09_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id
+# python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id
 
 # stable_id を強めたいとき（交差が多い教室向け）
-# python scripts/09_video_offline.py --ckpt models/skeleton_modes.pt --mode skeleton --situation 聞く --data_root datasets/hara --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2
+# python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2

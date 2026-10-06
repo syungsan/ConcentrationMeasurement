@@ -1,0 +1,42 @@
+# 4Kの巨大動画を軽量化
+python scripts/01_make_proxy.py --data_root datasets/{your_folder}
+
+# 人物検出
+python scripts/02_detect_track.py --data_root datasets/{your_folder}
+
+# 区間分割（セグメンテーション）
+python scripts/03_make_segments.py --data_root datasets/{your_folder}
+
+# 人物画像と姿勢データを抽出
+python scripts/04_extract_frames_assets.py --data_root datasets/{your_folder}
+
+# 研究情報を設定
+python scripts/05_configure_research_dataset.py datasets/{your_folder} {school_name} {grade} {class_name} (normal or [after ab pilot_post]) --minutes-after 0
+
+# 評価者が1名だけの場合
+python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_folder2} --label_source individual --raters {raters} --mode (skeleton or fusion) --save_name models/{your_model_name}.pt --temporal transformer --lr 1e-4 (--include_pilot_post) --fusion_image_scale 0.5
+# 評価者が複数人でデータベースをマージする場合
+python scripts/tools/merge_rater_databases.py --base-db datasets/{your_folder}/db/dataset.sqlite --inputs returned_dbs/{your_filename1}.sqlite returned_dbs/{your_filename2}.sqlite --output merged/{your_filename}_merged.sqlite --overwrite
+python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_folder2} --label_source (individual or consensus) --raters {raters} --mode (skeleton or fusion) --save_name models/{your_model_name}.pt --temporal transformer --lr 1e-4 (--include_pilot_post) --fusion_image_scale 0.5
+
+# テストデータによるモデルの評価
+python scripts/tools/evaluate_labeled_dataset.py --model models/{your_model}.pt --data_roots datasets/{your_test_datasets} --label_source (individual or consensus) --raters {raters} --mode (skeleton or fusion) --output-dir outputs/{your_folder}
+
+# 動画予測 目モザイク + 骨格線 + stable_id（おすすめ）
+python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
+# stable_id を強めたいとき（交差が多い教室向け）
+python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
+
+# リアルタイム予測
+# stable_id + fullscreen toggle
+python scripts/08_realtime.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) --source 0 --show --fullscreen --stable_id --data_root realtime --no_face_exclusion --light-det
+# stable_id + mosaic (skeleton/fusion)
+python scripts/08_realtime.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) --source 0 --show --stable_id --mosaic_eyes --data_root realtime
+# tune stable matcher (more strict):
+python scripts/08_realtime.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime
+
+# 各種解析
+python scripts/tools/apply_ab_interval.py --db outputs/pred_log.sqlite --start {AB start time mm:ss} --end {AB end time mm:ss}
+python scripts/10_aggregate_predictions.py --db outputs/pred_log.sqlite --out_dir outputs --bin_sec 5
+python scripts/tools/make_situation_bg_chart.py --input outputs/agg_timeseries_sec.xlsx --output outputs/agg_timeseries_sec_situation_bg.xlsx
+python scripts/13_ab_intervention_report.py --db outputs/pred_log.sqlite --output outputs/ab_intervention_report.xlsx

@@ -81,5 +81,5 @@ if __name__ == "__main__":
         minutes, seconds = divmod(remainder, 60)
         print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
-# command
-# python scripts/03_make_segments.py --data_root datasets/lesson_001
+# common command
+# python scripts/03_make_segments.py --data_root datasets/{your_folder}

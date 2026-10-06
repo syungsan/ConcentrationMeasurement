@@ -1006,7 +1006,7 @@ def parse_args():
     ap.add_argument("--objective", choices=["ordinal", "regression"], default="ordinal")
     ap.add_argument(
         "--split_unit", choices=["school", "session", "dataset", "window"],
-        default="school",
+        default="window",
         help="Validation grouping. Use school for external-generalization development.",
     )
     ap.add_argument(
@@ -1204,18 +1204,11 @@ if __name__ == "__main__":
         minutes, seconds = divmod(remainder, 60)
         print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
-# command
-# 初期小規模実験
-# 複数評価者の合意DBを使う場合：
-# python.exe scripts\07_train.py --data_roots datasets\lesson_train --db_paths merged\lesson_train.sqlite --label_source consensus --split_unit window --mode skeleton --save_name models\pilot_class.pt
-# 評価者が1名だけの場合：
-# python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode skeleton --save_name models\pilot_class.pt
-# python.exe scripts\07_train.py --data_roots datasets\lesson_train --label_source individual --raters evaluator01 --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pilot_fusion_stable.pt
+# common command
 
-# --temporal transformer
-# 複数評価者の複数DBを使う場合の前処理：
-# python.exe scripts\tools\merge_rater_databases.py --base-db datasets\lesson_001\db\dataset.sqlite --inputs returned_dbs\lesson_001_tanaka.sqlite returned_dbs\lesson_001_suzuki.sqlite returned_dbs\lesson_001_sato.sqlite --output merged\lesson_001_merged.sqlite --overwrite
-# マージ後
-# python.exe scripts\07_train.py --data_roots datasets\lesson_001 --db_paths merged\lesson_001_merged.sqlite --label_source consensus --mode fusion
+# 評価者が1名だけの場合
+# python scripts/07_train.py --data_roots datasets/{your_folder},(any_datasets) --label_source individual --raters {raters_name} --mode (skeleton or fusion) --save_name models/{your_model_name}.pt --temporal transformer --fusion_image_scale 0.5
 
-# python.exe scripts\07_train.py --data_roots datasets\20260227_unnan_nishi_5-1_1,datasets\20260227_unnan_nishi_5-1_2,datasets\20260311_unnan_nishi_5-1_1,datasets\20260313_unnan_nishi_5-1_1_a --label_source individual --raters sample --split_unit window --mode fusion --fusion_image_scale 0.5 --save_name models\pre_test_2_transformer_fusion.pt --temporal transformer --lr 1e-4 --include_pilot_post
+# 評価者が複数人でデータベースをマージする場合
+# python scripts/tools/merge_rater_databases.py --base-db datasets/{your_folder}/db/dataset.sqlite --inputs returned_dbs/{your_filename1}.sqlite returned_dbs/{your_filename2}.sqlite --output merged/{your_filename}_merged.sqlite --overwrite
+# python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_folder2} --label_source (individual or consensus) --raters {raters} --mode {skeleton or fusion} --save_name models/{your_model_name}.pt --temporal transformer --lr 1e-4 (--include_pilot_post) --fusion_image_scale 0.5

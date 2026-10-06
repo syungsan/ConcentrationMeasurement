@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--situation-source",
         choices=["true", "predicted"],
-        default="true",
+        default="predicted",
         help="true uses DB situation labels. predicted uses the situation classifier stored in the checkpoint.",
     )
     situation_feature_group = parser.add_mutually_exclusive_group()

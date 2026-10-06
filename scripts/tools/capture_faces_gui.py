@@ -10,18 +10,46 @@ import os
 import warnings
 from pathlib import Path
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.devices import face_device, face_providers, face_context_id
 
 import cv2
-# import numpy as np
 
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinter import font as tkfont
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FACES_DIR = PROJECT_ROOT / "faces"
+
+
+def configure_wsl_fonts(root: tk.Tk) -> None:
+    """WSLでのみ、インストール済みの日本語フォントを設定する。"""
+    if sys.platform != "linux":
+        return
+
+    is_wsl = (
+            "microsoft" in os.uname().release.lower()
+            or bool(os.environ.get("WSL_INTEROP"))
+            or bool(os.environ.get("WSL_DISTRO_NAME"))
+    )
+    if not is_wsl:
+        return
+
+    available = set(tkfont.families(root=root))
+
+    # フォント名だけ変更し、サイズや太字などの設定は維持する。
+    for name in tkfont.names(root=root):
+        family = (
+            "Noto Sans Mono CJK JP"
+            if name == "TkFixedFont"
+            else "Noto Sans CJK JP"
+        )
+        if family in available:
+            tkfont.nametofont(name, root=root).configure(family=family)
+
 
 # InsightFace 1.0.1内のscikit-image旧APIに対する既知の警告だけを抑制する。
 warnings.filterwarnings(
@@ -55,8 +83,8 @@ def cuda_is_available() -> bool:
         ort.preload_dlls(directory=str(torch_lib))
 
     return (
-        ort is not None
-        and "CUDAExecutionProvider" in ort.get_available_providers()
+            ort is not None
+            and "CUDAExecutionProvider" in ort.get_available_providers()
     )
 
 
@@ -92,13 +120,13 @@ def capture_faces(
         stop_event=None,
         video_path: str | None = None,
 ):
-    """
-    顔画像収集（独立プロセスのメインスレッドで実行する）
-    """
+    """顔画像収集（独立プロセスのメインスレッドで実行する）。"""
     if FaceAnalysis is None:
         raise ImportError(
             "insightface がインポートできません。\n"
-            "`pip install -r requirements_for_mac.txt（Mac） / pip install -r requirements.txt（Windows）` などでインストールしてください。"
+            "`pip install -r requirements_for_mac.txt（Mac） / "
+            "pip install -r requirements.txt（Windows）` "
+            "などでインストールしてください。"
         )
 
     out_root = Path(out_root)
@@ -119,7 +147,11 @@ def capture_faces(
         )
 
     providers = face_providers(device)
-    app = FaceAnalysis(name="buffalo_l", allowed_modules=["detection"], providers=providers)
+    app = FaceAnalysis(
+        name="buffalo_l",
+        allowed_modules=["detection"],
+        providers=providers,
+    )
     if use_cuda:
         ensure_models_use_cuda(app)
         print("[INFO] InsightFace の全モデルをCUDAで初期化しました。")
@@ -142,7 +174,9 @@ def capture_faces(
         frame_index = 0
         fps = cap.get(cv2.CAP_PROP_FPS) if video_path is not None else 0.0
         if video_path is not None and (not math.isfinite(fps) or fps <= 0):
-            raise RuntimeError("動画のFPSを取得できません。別の動画形式でお試しください。")
+            raise RuntimeError(
+                "動画のFPSを取得できません。別の動画形式でお試しください。"
+            )
 
         win_name = f"Capture faces: {person_name}"
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
@@ -153,8 +187,11 @@ def capture_faces(
         while stop_event is None or not stop_event.is_set():
             ret, frame = cap.read()
             if not ret:
-                print("[INFO] 動画の読み込みを終了しました。" if video_path is not None
-                      else "[WARN] フレーム取得に失敗しました。終了します。")
+                print(
+                    "[INFO] 動画の読み込みを終了しました。"
+                    if video_path is not None
+                    else "[WARN] フレーム取得に失敗しました。終了します。"
+                )
                 break
 
             if first_frame and screen_w is not None and screen_h is not None:
@@ -170,6 +207,7 @@ def capture_faces(
                 # 処理速度によらず、動画内の時間で保存間隔を判定する。
                 elapsed = frame_index / fps
                 frame_index += 1
+
             if video_path is None and elapsed > duration:
                 print("[INFO] 指定時間に到達したので終了します。")
                 break
@@ -208,14 +246,24 @@ def capture_faces(
                         print(f"[SAVE] {save_path.name} (t={elapsed:.1f}s)")
 
                     # 画面上に矩形を表示
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(
+                        frame, (x1, y1), (x2, y2), (0, 255, 0), 2
+                    )
 
             # 経過時間も表示
             cv2.putText(
-                frame, (f"{elapsed:4.1f}s" if video_path is not None
-                        else f"{elapsed:4.1f}s / {duration:.1f}s"),
+                frame,
+                (
+                    f"{elapsed:4.1f}s"
+                    if video_path is not None
+                    else f"{elapsed:4.1f}s / {duration:.1f}s"
+                ),
                 (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2, cv2.LINE_AA
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 255, 255),
+                2,
+                cv2.LINE_AA,
             )
 
             cv2.imshow(win_name, frame)
@@ -227,6 +275,7 @@ def capture_faces(
     finally:
         cap.release()
         cv2.destroyAllWindows()
+
     print(f"[DONE] 保存した画像枚数: {saved_count}")
 
     # OSに合わせて収録フォルダを自動で開く
@@ -234,7 +283,10 @@ def capture_faces(
         if os.name == "nt":
             os.startfile(str(person_dir.resolve()))
         elif sys.platform == "darwin":
-            subprocess.run(["/usr/bin/open", str(person_dir.resolve())], check=True)
+            subprocess.run(
+                ["/usr/bin/open", str(person_dir.resolve())],
+                check=True,
+            )
     except Exception as e:
         print(f"[WARN] フォルダを開く際にエラー: {e}")
 
@@ -282,9 +334,7 @@ class FaceCaptureGUI:
         self.var_cam = tk.IntVar(value=0)
         self.var_source = tk.StringVar(value="camera")
         self.var_video = tk.StringVar()
-        self.var_device = tk.StringVar(
-            value="auto"
-        )
+        self.var_device = tk.StringVar(value="auto")
 
         self._build_widgets()
 
@@ -295,57 +345,106 @@ class FaceCaptureGUI:
         frame.pack(fill="both", expand=True, padx=10, pady=10)
 
         # 名前
-        ttk.Label(frame, text="人物名:").grid(row=0, column=0, sticky="e", **pad)
-        ttk.Entry(frame, textvariable=self.var_name, width=25).grid(
-            row=0, column=1, sticky="w", **pad
+        ttk.Label(frame, text="人物名:").grid(
+            row=0, column=0, sticky="e", **pad
         )
+        ttk.Entry(
+            frame, textvariable=self.var_name, width=25
+        ).grid(row=0, column=1, sticky="w", **pad)
 
         # 出力ルート
-        ttk.Label(frame, text="出力ルート:").grid(row=1, column=0, sticky="e", **pad)
-        ttk.Entry(frame, textvariable=self.var_out_root, width=25).grid(
-            row=1, column=1, sticky="w", **pad
+        ttk.Label(frame, text="出力ルート:").grid(
+            row=1, column=0, sticky="e", **pad
         )
+        ttk.Entry(
+            frame, textvariable=self.var_out_root, width=25
+        ).grid(row=1, column=1, sticky="w", **pad)
 
         # 収録時間
-        ttk.Label(frame, text="収録時間(秒):").grid(row=2, column=0, sticky="e", **pad)
-        self.entry_duration = ttk.Entry(frame, textvariable=self.var_duration, width=10)
+        ttk.Label(frame, text="収録時間(秒):").grid(
+            row=2, column=0, sticky="e", **pad
+        )
+        self.entry_duration = ttk.Entry(
+            frame, textvariable=self.var_duration, width=10
+        )
         self.entry_duration.grid(
             row=2, column=1, sticky="w", **pad
         )
 
         # カメラインデックス
-        ttk.Label(frame, text="カメラID:").grid(row=3, column=0, sticky="e", **pad)
-        self.entry_cam = ttk.Entry(frame, textvariable=self.var_cam, width=10)
+        ttk.Label(frame, text="カメラID:").grid(
+            row=3, column=0, sticky="e", **pad
+        )
+        self.entry_cam = ttk.Entry(
+            frame, textvariable=self.var_cam, width=10
+        )
         self.entry_cam.grid(
             row=3, column=1, sticky="w", **pad
         )
 
         # デバイス
-        ttk.Label(frame, text="デバイス:").grid(row=4, column=0, sticky="e", **pad)
+        ttk.Label(frame, text="デバイス:").grid(
+            row=4, column=0, sticky="e", **pad
+        )
         dev_frame = ttk.Frame(frame)
         dev_frame.grid(row=4, column=1, sticky="w", **pad)
-        ttk.Radiobutton(dev_frame, text="自動", value="auto",
-                        variable=self.var_device).pack(side="left")
-        ttk.Radiobutton(dev_frame, text="Mac GPU（CoreML）", value="coreml",
-                        variable=self.var_device).pack(side="left")
-        ttk.Radiobutton(dev_frame, text="CUDA", value="cuda",
-                        variable=self.var_device).pack(side="left")
-        ttk.Radiobutton(dev_frame, text="CPU", value="cpu",
-                        variable=self.var_device).pack(side="left")
 
-        ttk.Label(frame, text="入力:").grid(row=5, column=0, sticky="e", **pad)
+        ttk.Radiobutton(
+            dev_frame,
+            text="自動",
+            value="auto",
+            variable=self.var_device,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            dev_frame,
+            text="Mac GPU（CoreML）",
+            value="coreml",
+            variable=self.var_device,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            dev_frame,
+            text="CUDA",
+            value="cuda",
+            variable=self.var_device,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            dev_frame,
+            text="CPU",
+            value="cpu",
+            variable=self.var_device,
+        ).pack(side="left")
+
+        ttk.Label(frame, text="入力:").grid(
+            row=5, column=0, sticky="e", **pad
+        )
         source_frame = ttk.Frame(frame)
         source_frame.grid(row=5, column=1, sticky="w", **pad)
-        for label, value in (("カメラ", "camera"), ("動画ファイル", "video")):
-            ttk.Radiobutton(source_frame, text=label, value=value,
-                            variable=self.var_source, command=self.update_source_state).pack(side="left")
+        for label, value in (
+                ("カメラ", "camera"),
+                ("動画ファイル", "video"),
+        ):
+            ttk.Radiobutton(
+                source_frame,
+                text=label,
+                value=value,
+                variable=self.var_source,
+                command=self.update_source_state,
+            ).pack(side="left")
 
-        ttk.Label(frame, text="動画ファイル:").grid(row=6, column=0, sticky="e", **pad)
+        ttk.Label(frame, text="動画ファイル:").grid(
+            row=6, column=0, sticky="e", **pad
+        )
         video_frame = ttk.Frame(frame)
         video_frame.grid(row=6, column=1, sticky="ew", **pad)
-        self.entry_video = ttk.Entry(video_frame, textvariable=self.var_video, width=35)
+
+        self.entry_video = ttk.Entry(
+            video_frame, textvariable=self.var_video, width=35
+        )
         self.entry_video.pack(side="left", fill="x", expand=True)
-        self.btn_video = ttk.Button(video_frame, text="参照...", command=self.select_video)
+
+        self.btn_video = ttk.Button(
+            video_frame, text="参照...", command=self.select_video
+        )
         self.btn_video.pack(side="left", padx=5)
         self.update_source_state()
 
@@ -353,10 +452,14 @@ class FaceCaptureGUI:
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=7, column=0, columnspan=2, pady=15)
 
-        self.btn_start = ttk.Button(btn_frame, text="開始", command=self.on_start)
+        self.btn_start = ttk.Button(
+            btn_frame, text="開始", command=self.on_start
+        )
         self.btn_start.pack(side="left", padx=5)
 
-        self.btn_quit = ttk.Button(btn_frame, text="終了", command=self.on_quit)
+        self.btn_quit = ttk.Button(
+            btn_frame, text="終了", command=self.on_quit
+        )
         self.btn_quit.pack(side="left", padx=5)
 
     def update_source_state(self):
@@ -368,9 +471,15 @@ class FaceCaptureGUI:
 
     def select_video(self):
         path = filedialog.askopenfilename(
-            parent=self.root, title="入力する動画を選択",
-            filetypes=[("動画ファイル", "*.mp4 *.avi *.mov *.mkv *.wmv *.m4v *.webm"),
-                       ("すべてのファイル", "*.*")],
+            parent=self.root,
+            title="入力する動画を選択",
+            filetypes=[
+                (
+                    "動画ファイル",
+                    "*.mp4 *.avi *.mov *.mkv *.wmv *.m4v *.webm",
+                ),
+                ("すべてのファイル", "*.*"),
+            ],
         )
         if path:
             self.var_video.set(path)
@@ -386,16 +495,21 @@ class FaceCaptureGUI:
 
         out_root = self.var_out_root.get().strip()
         if not out_root:
-            messagebox.showwarning("警告", "出力ルートを入力してください。")
+            messagebox.showwarning(
+                "警告", "出力ルートを入力してください。"
+            )
             return
 
         video_path = None
         duration = 30.0
         cam_index = 0
+
         if self.var_source.get() == "video":
             video_path = self.var_video.get().strip()
             if not video_path or not Path(video_path).is_file():
-                messagebox.showwarning("警告", "存在する動画ファイルを選択してください。")
+                messagebox.showwarning(
+                    "警告", "存在する動画ファイルを選択してください。"
+                )
                 return
         else:
             try:
@@ -403,15 +517,21 @@ class FaceCaptureGUI:
                 if not math.isfinite(duration) or duration <= 0:
                     raise ValueError
             except (ValueError, tk.TclError):
-                messagebox.showwarning("警告", "収録時間は正の数で入力してください。")
+                messagebox.showwarning(
+                    "警告", "収録時間は正の数で入力してください。"
+                )
                 return
+
             try:
                 cam_index = int(self.var_cam.get())
                 if cam_index < 0:
                     raise ValueError
             except (ValueError, tk.TclError):
-                messagebox.showwarning("警告", "カメラIDは0以上の整数で入力してください。")
+                messagebox.showwarning(
+                    "警告", "カメラIDは0以上の整数で入力してください。"
+                )
                 return
+
         device = self.var_device.get()
 
         # ボタン無効化
@@ -421,10 +541,16 @@ class FaceCaptureGUI:
         self.stop_event = self.process_context.Event()
         self.result_queue = self.process_context.Queue()
         options = dict(
-            cam_index=cam_index, out_root=out_root, person_name=name,
-            duration=duration, device=device, det_size=(640, 640),
-            margin=20, min_interval=0.5,
-            screen_w=self.screen_w, screen_h=self.screen_h,
+            cam_index=cam_index,
+            out_root=out_root,
+            person_name=name,
+            duration=duration,
+            device=device,
+            det_size=(640, 640),
+            margin=20,
+            min_interval=0.5,
+            screen_w=self.screen_w,
+            screen_h=self.screen_h,
             video_path=video_path,
         )
         self.capture_process = self.process_context.Process(
@@ -439,39 +565,57 @@ class FaceCaptureGUI:
             self.btn_start.config(state="normal")
             messagebox.showerror("エラー", str(exc))
             return
+
         self.root.after(100, self.poll_capture)
 
     def poll_capture(self):
         if self.capture_process.is_alive():
             self.root.after(100, self.poll_capture)
             return
+
         self.capture_process.join()
         try:
             error = self.result_queue.get(timeout=0.2)
         except queue.Empty:
-            error = f"キャプチャプロセスが終了しました（終了コード: {self.capture_process.exitcode}）。"
+            error = (
+                "キャプチャプロセスが終了しました"
+                f"（終了コード: {self.capture_process.exitcode}）。"
+            )
+
         self.result_queue.close()
         self.capture_process.close()
         self.is_capturing = False
         self.btn_start.config(state="normal")
+
         if self.closing:
             self.root.destroy()
         elif error:
-            messagebox.showerror("エラー", f"キャプチャ中にエラーが発生しました:\n{error}")
+            messagebox.showerror(
+                "エラー",
+                f"キャプチャ中にエラーが発生しました:\n{error}",
+            )
 
     def on_quit(self):
         if self.is_capturing:
-            if not messagebox.askyesno("確認", "キャプチャ中です。終了してもよろしいですか？"):
+            if not messagebox.askyesno(
+                    "確認", "キャプチャ中です。終了してもよろしいですか？"
+            ):
                 return
+
             self.closing = True
             self.stop_event.set()
             self.btn_quit.config(state="disabled")
             return
+
         self.root.destroy()
 
 
 def main():
     root = tk.Tk()
+
+    # WSLの場合のみ、日本語フォントをウィジェット作成前に設定する。
+    configure_wsl_fonts(root)
+
     app = FaceCaptureGUI(root)
     root.mainloop()
 

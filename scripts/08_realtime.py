@@ -1021,12 +1021,13 @@ def main():
 if __name__ == "__main__":
     main()
 
-# examples:
+# common command
+
 # stable_id + fullscreen toggle
 # python scripts/08_realtime.py --ckpt models/gru_fusion_modes.pt --mode fusion --source 0 --show --fullscreen --stable_id --data_root realtime --no_face_exclusion --light-det
-#
+
 # stable_id + mosaic (skeleton/fusion)
 # python scripts/08_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --mosaic_eyes --data_root realtime
-#
+
 # tune stable matcher (more strict):
-# python scripts/08_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --situation 聞く --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime
+# python scripts/08_realtime.py --ckpt models/skeleton_modes.pt --mode skeleton --source 0 --show --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --data_root realtime

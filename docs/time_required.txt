@@ -60,4 +60,47 @@ fusion (45min-transformer)
 
 
 
-Orpheus (Ryzen7 5700X & RTX3060)
+Orpheus (Ryzen7 5700X & RTX3060) WSL2
+
+01_make_proxy.py
+所要時間: 00:02:07.17 (127.17秒)
+
+02_detect_track.py
+所要時間: 02:09:53.04 (7793.04秒)
+
+03_make_segments.py
+所要時間: 00:00:03.67 (3.67秒)
+
+04_extract_frames_assets.py
+所要時間: 01:55:48.54 (6948.54秒)
+
+05_configure_research_dataset.py
+所要時間: 00:00:04.26 (4.26秒)
+
+06_train.py
+fusion (transformer)
+所要時間: 01:02:56.80 (3776.80秒)
+
+09_video_offline.py
+fusion (10min-transformer)
+所要時間: 03:00:24.45 (10824.45秒)
+
+Orpheus (Ryzen7 5700X & RTX3060) Windows
+
+01_make_proxy.py
+
+
+02_detect_track.py
+
+
+03_make_segments.py
+
+
+04_extract_frames_assets.py
+
+
+05_configure_research_dataset.py
+
+
+06_train.py
+fusion (transformer)

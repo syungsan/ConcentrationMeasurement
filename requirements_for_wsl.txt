@@ -1,0 +1,23 @@
+torch
+torchvision
+ultralytics
+opencv-python
+numpy
+PySide6
+PyYAML
+pandas
+openpyxl
+matplotlib
+seaborn
+scikit-learn
+insightface
+onnxruntime-gpu
+
+### install tkinter ###
+# sudo apt update
+# sudo apt install python3-tk
+
+### install FFmpeg & Japnese Fonts ###
+# sudo apt update
+# sudo apt install -y ffmpeg fonts-noto-cjk fontconfig
+# fc-cache -fv

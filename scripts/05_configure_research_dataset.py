@@ -25,14 +25,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="05: Register the minimum research metadata for one dataset."
     )
-    parser.add_argument("dataset", help="dataset folder, e.g. datasets/lesson_001")
+    parser.add_argument("dataset", help="dataset folder, e.g. datasets/{your_folder}")
     parser.add_argument("school_id", help="anonymous school ID, e.g. school_a")
     parser.add_argument("grade", help="grade, e.g. 5")
     parser.add_argument("class_id", help="anonymous class ID, e.g. 5A")
     parser.add_argument("phase", choices=PHASES)
     parser.add_argument(
-        "--minutes-after", type=float,
-        help="Minutes after intervention; required only for pilot_post/post.",
+        "--minutes-after", type=float, default=0,
+        help="Minutes after intervention (default: 0).",
     )
     return parser.parse_args()
 
@@ -44,10 +44,6 @@ def main() -> None:
     if not db.exists():
         raise FileNotFoundError(db)
     minutes_after = args.minutes_after
-    if args.phase in {"pilot_post", "post"} and minutes_after is None:
-        raise ValueError(
-            f"phase={args.phase} requires --minutes-after (use 0 for immediately after)"
-        )
     role = "trial" if args.phase in {"pre", "post"} else "development"
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA foreign_keys=ON")
@@ -77,5 +73,5 @@ if __name__ == "__main__":
         minutes, seconds = divmod(remainder, 60)
         print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
-# command
-# python scripts\05_configure_research_dataset.py datasets\lesson_001 school_a 5 5A normal
+# common command
+# python scripts/05_configure_research_dataset.py datasets/{your_folder} {school_name} {grade} {class_name} (normal or [after ab pilot_post]) --minutes-after 0

@@ -4,6 +4,11 @@
 
 ## 動作環境
 
+`02_detect_track.py` は `config.yaml` の `detection_tracking.model` で指定した
+公式 YOLO モデルが未配置の場合、初回実行時に自動取得します（インターネット接続が必要です）。
+標準の保存先は `models/yolov8x.pt` で、次回以降は保存済みモデルを使用します。
+独自の学習済みモデルは自動取得できないため、設定したパスに配置してください。
+
 - Windows 10 / 11 または Apple Silicon Mac（M1以降）
 - Python 3.12（同梱WinPythonを推奨）
 - NVIDIA GPU（学習・推論を高速化する場合）

@@ -13,6 +13,7 @@ from ultralytics import YOLO
 from lib.db import connect, init_db, upsert_video, ensure_track
 from lib.video import get_video_meta
 from lib.runroot import get_data_root, rpath
+from lib.yolo_models import ensure_yolo_model
 
 here = Path(__file__).resolve()
 repo_root = here.parent.parent  # config.yaml がある場所（固定）
@@ -37,6 +38,10 @@ def main():
     if not raw_video.exists():
         raise FileNotFoundError(f"raw video not found: {raw_video}")
 
+    # Prepare weights before modifying the dataset database.
+    model_path = ensure_yolo_model(resolve_repo_path(repo_root, detcfg["model"]))
+    model = YOLO(str(model_path))
+
     # DB open/init
     conn = connect(db_path)
     init_db(conn)
@@ -53,13 +58,6 @@ def main():
         int(meta.height),
         int(meta.frame_count),
     )
-
-    # YOLO model は repo_root 側にある想定（models/）
-    model_path = resolve_repo_path(repo_root, detcfg["model"])
-    if not model_path.exists():
-        raise FileNotFoundError(f"YOLO model not found: {model_path}")
-
-    model = YOLO(str(model_path))
 
     # tracker も repo_root 側の想定（botsort.yaml 等）
     tracker_path = resolve_repo_path(repo_root, detcfg["tracker"])
@@ -160,5 +158,5 @@ if __name__ == "__main__":
         minutes, seconds = divmod(remainder, 60)
         print(f"所要時間: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({elapsed:.2f}秒)")
 
-# command
-# python scripts/02_detect_track.py --data_root datasets/lesson_001
+# common command
+# python scripts/02_detect_track.py --data_root datasets/{your_folder}
