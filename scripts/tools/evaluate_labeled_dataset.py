@@ -7,6 +7,7 @@ import json
 import math
 import sqlite3
 import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -146,8 +147,16 @@ def score_to_class(values: np.ndarray) -> np.ndarray:
 def collect_labeled_items(train_mod: Any, cfg: Any) -> list[tuple[int, int]]:
     items: list[tuple[int, int]] = []
     for db_i, db_path in enumerate(cfg.db_paths):
+        print(f"[data] database {db_i + 1}/{len(cfg.db_paths)}: {db_path}", flush=True)
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
+        has_exclusions = cur.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='excluded_segments'"
+        ).fetchone() is not None
+        exclusion_filter = (
+            "AND NOT EXISTS (SELECT 1 FROM excluded_segments es WHERE es.segment_id=s.id)"
+            if has_exclusions else ""
+        )
         if cfg.label_source == "consensus":
             filters = ["w.situation IN (?, ?, ?)", "c.rater_count >= ?"]
             params: list[Any] = list(train_mod.SITUATIONS) + [cfg.min_raters]
@@ -161,7 +170,7 @@ def collect_labeled_items(train_mod: Any, cfg: Any) -> list[tuple[int, int]]:
                 JOIN windows w ON w.id = s.window_id
                 JOIN segment_frames sf ON sf.segment_id = s.id
                 JOIN label_consensus c ON c.segment_id = s.id
-                WHERE {' AND '.join(filters)}
+                WHERE {' AND '.join(filters)} {exclusion_filter}
                 GROUP BY s.id
                 ORDER BY w.video_id, w.t_start, s.track_id
                 """,
@@ -178,7 +187,7 @@ def collect_labeled_items(train_mod: Any, cfg: Any) -> list[tuple[int, int]]:
                 JOIN windows w ON w.id = s.window_id
                 JOIN segment_frames sf ON sf.segment_id = s.id
                 JOIN labels l ON l.segment_id = s.id AND l.rater IN ({qmarks})
-                WHERE w.situation IN (?, ?, ?)
+                WHERE w.situation IN (?, ?, ?) {exclusion_filter}
                 GROUP BY s.id
                 ORDER BY w.video_id, w.t_start, s.track_id
                 """,
@@ -186,6 +195,7 @@ def collect_labeled_items(train_mod: Any, cfg: Any) -> list[tuple[int, int]]:
             ).fetchall()
         conn.close()
         items.extend((db_i, int(row[0])) for row in rows)
+        print(f"[data] selected={len(rows):,} segments; total={len(items):,}", flush=True)
     if not items:
         raise RuntimeError("no labeled test items found")
     return items
@@ -249,13 +259,16 @@ def predict_rows(
     if situation_model is not None:
         situation_model.eval()
     rows: list[dict[str, Any]] = []
-    for indices, frames, poses, situations, y in loader:
+    started = time.monotonic()
+    print(f"[inference] START: {len(items):,} segments / {len(loader):,} batches", flush=True)
+    for batch_index, (indices, frames, poses, situations, y) in enumerate(loader, 1):
         if frames is not None:
             frames = frames.to(cfg.device)
         if poses is not None:
             poses = poses.to(cfg.device)
         situations = situations.to(cfg.device)
         y = y.to(cfg.device)
+        situation_probs = None
         if situation_model is not None:
             logits = situation_model(frames, poses)
             situations = torch.softmax(logits, dim=-1).nan_to_num(
@@ -263,22 +276,42 @@ def predict_rows(
                 posinf=1.0 / max(1, len(train_mod.SITUATIONS)),
                 neginf=0.0,
             )
+            situation_probs = situations.detach().cpu().numpy()
         pred = model(frames, poses, situations).detach().cpu().numpy()
         truth = y.detach().cpu().numpy()
-        for local_i, true_score, pred_score in zip(indices, truth, pred):
+        for batch_row, (local_i, true_score, pred_score) in enumerate(zip(indices, truth, pred)):
             db_i, segment_id = items[int(local_i)]
             meta = load_segment_metadata(cfg.db_paths[db_i], segment_id)
+            situation_details = {}
+            if situation_probs is not None:
+                probabilities = situation_probs[batch_row]
+                best_index = int(np.argmax(probabilities))
+                situation_details = {
+                    "predicted_situation": train_mod.SITUATIONS[best_index],
+                    "situation_confidence": float(probabilities[best_index]),
+                    "situation_probs": json.dumps(probabilities.tolist()),
+                }
             rows.append(
                 {
                     "db_index": db_i,
                     "db_path": str(cfg.db_paths[db_i]),
                     "data_root": str(cfg.data_roots[db_i]),
                     **meta,
+                    **situation_details,
                     "true_score": float(true_score),
                     "pred_score": float(pred_score),
                     "score_error": float(pred_score - true_score),
                 }
             )
+        elapsed = time.monotonic() - started
+        completed = len(rows)
+        remaining = elapsed * (len(items) - completed) / max(1, completed)
+        print(
+            f"[inference] batch {batch_index}/{len(loader)} | "
+            f"{completed:,}/{len(items):,} segments ({100 * completed / max(1, len(items)):.1f}%) | "
+            f"elapsed={elapsed:.0f}s | estimated remaining={remaining:.0f}s",
+            flush=True,
+        )
     return rows
 
 
@@ -370,6 +403,8 @@ def save_regression_plots(frame: pd.DataFrame, output_dir: Path) -> None:
 
 def main() -> None:
     args = parse_args()
+    started = time.monotonic()
+    print(f"[setup] Loading model: {args.model.resolve()}", flush=True)
     args.device = resolve_device(args.device)
     root = repo_root()
     train_mod = load_train_module(root)
@@ -424,8 +459,18 @@ def main() -> None:
 
     situation_model = None
     if args.situation_source == "predicted":
+        print("[setup] Loading situation classifier", flush=True)
         situation_model = load_situation_model(ckpt, eval_cfg, mode, args.device)
+    print(
+        f"Model checkpoint: {args.model.resolve()}\n"
+        f"Evaluation: mode={mode} temporal={eval_cfg.temporal} T={eval_cfg.T} "
+        f"training_augmentation={model_cfg.augmentation} "
+        f"grayscale={model_cfg.grayscale} "
+        f"situation_source={args.situation_source} use_situation_feature={use_situation_feature}",
+        flush=True,
+    )
 
+    print("[data] Collecting labeled evaluation segments", flush=True)
     items = collect_labeled_items(train_mod, eval_cfg)
     dataset = train_mod.MultiSQLiteSegmentDataset(eval_cfg, items, is_train=False)
     loader = DataLoader(
@@ -436,6 +481,7 @@ def main() -> None:
         collate_fn=make_indexed_collate(train_mod),
     )
     rows = predict_rows(train_mod, model, loader, items, eval_cfg, situation_model)
+    print("[report] Computing metrics and saving prediction tables", flush=True)
     frame = pd.DataFrame(rows)
     frame["true_class"] = score_to_class(frame["true_score"].to_numpy(dtype=float))
     frame["pred_class"] = score_to_class(frame["pred_score"].to_numpy(dtype=float))
@@ -446,6 +492,16 @@ def main() -> None:
     frame.to_csv(args.output_dir / "predictions.csv", index=False, encoding="utf-8-sig")
 
     metrics = compute_metrics(frame)
+    if "predicted_situation" in frame:
+        situation_accuracy = float((frame["situation"] == frame["predicted_situation"]).mean())
+        pd.DataFrame([{"n": len(frame), "accuracy": situation_accuracy}]).to_csv(
+            args.output_dir / "situation_metrics.csv", index=False, encoding="utf-8-sig")
+        (args.output_dir / "situation_metrics.json").write_text(
+            json.dumps({"n": len(frame), "accuracy": situation_accuracy}, indent=2), encoding="utf-8")
+        situation_cm = confusion_matrix(frame["situation"], frame["predicted_situation"], labels=train_mod.SITUATIONS)
+        pd.DataFrame(situation_cm, index=train_mod.SITUATIONS, columns=train_mod.SITUATIONS).to_csv(
+            args.output_dir / "situation_confusion_matrix.csv", encoding="utf-8-sig")
+        print(f"[situation] independent accuracy={situation_accuracy:.4f}", flush=True)
     metrics_json_path = args.output_dir / "metrics.json"
     metrics_csv_path = args.output_dir / "metrics.csv"
     metrics_json_path.write_text(
@@ -461,7 +517,9 @@ def main() -> None:
     )
     pd.DataFrame(report).transpose().to_csv(args.output_dir / "classification_report.csv", encoding="utf-8-sig")
 
+    print("[report] Saving confusion matrix", flush=True)
     save_confusion_outputs(frame, args.output_dir)
+    print("[report] Saving regression plots", flush=True)
     save_regression_plots(frame, args.output_dir)
 
     with (args.output_dir / "run_config.json").open("w", encoding="utf-8") as f:
@@ -475,16 +533,30 @@ def main() -> None:
                 "raters": raters,
                 "situation_source": args.situation_source,
                 "use_situation_feature": use_situation_feature,
+                "training_augmentation": model_cfg.augmentation,
+                "grayscale": model_cfg.grayscale,
+                "checkpoint_cfg": {k: str(v) if isinstance(v, Path) else v
+                                   for k, v in ckpt["cfg"].items()},
+                "T": eval_cfg.T,
+                "temporal": eval_cfg.temporal,
+                "objective": eval_cfg.objective,
+                "image_roi": eval_cfg.image_roi,
+                "fusion_image_scale": eval_cfg.fusion_image_scale,
+                "agg": agg,
+                "min_raters": min_raters,
+                "max_label_std": max_label_std,
             },
             f,
             ensure_ascii=False,
             indent=2,
+            default=str,
         )
 
     print(json.dumps(metrics, ensure_ascii=False, indent=2))
     print(f"Saved metrics to: {metrics_json_path.resolve()}")
     print(f"Saved metrics table to: {metrics_csv_path.resolve()}")
     print(f"Saved evaluation outputs to: {args.output_dir.resolve()}")
+    print(f"[complete] Evaluated {len(frame):,} segments in {time.monotonic() - started:.0f}s", flush=True)
 
 
 if __name__ == "__main__":

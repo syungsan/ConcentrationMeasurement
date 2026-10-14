@@ -85,6 +85,8 @@ fusion (transformer)
 fusion (10min-transformer)
 所要時間: 03:00:24.45 (10824.45秒)
 
+
+
 Orpheus (Ryzen7 5700X & RTX3060) Windows
 
 01_make_proxy.py
@@ -104,3 +106,10 @@ Orpheus (Ryzen7 5700X & RTX3060) Windows
 
 06_train.py
 fusion (transformer)
+
+
+09_video_offline.py
+fusion (10min-transformer)
+所要時間: 02:38:26.89 (9506.89秒)
+fusion (45min-transformer)
+所要時間: 14:25:11.99 (51911.99秒)

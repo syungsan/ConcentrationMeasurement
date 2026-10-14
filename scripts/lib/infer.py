@@ -12,9 +12,10 @@ from lib.model_defs import Cfg, Regressor, SituationClassifier, Mode
 from lib.situation import SITUATIONS, situation_one_hot
 
 
-def build_image_tf(img_size: int):
+def build_image_tf(img_size: int, grayscale: bool = False):
     # 07_train.py の val/推論時と同じ
-    return transforms.Compose([
+    color_transforms = [transforms.Grayscale(num_output_channels=3)] if grayscale else []
+    return transforms.Compose(color_transforms + [
         transforms.Resize(img_size + 32),
         transforms.CenterCrop(img_size),
         transforms.ToTensor(),
@@ -42,6 +43,11 @@ def _build_cfg_from_ckpt_dict(d: Dict[str, Any]) -> Cfg:
         dd["data_roots"] = _to_path_list(dd["data_roots"])
     if "db_paths" in dd:
         dd["db_paths"] = _to_path_list(dd["db_paths"])
+    # Before fusion weighting was introduced, RGB features were unscaled.
+    # Missing fields must not inherit today's 0.25 default at inference time.
+    dd.setdefault("fusion_image_scale", 1.0)
+    # Early checkpoints used the saved full-body crop directly.
+    dd.setdefault("image_roi", "full_body")
     return Cfg(**dd)
 
 
@@ -61,7 +67,7 @@ def load_ckpt(ckpt_path: Path, mode: Mode, device: str):
 
     if ckpt.get("feature_schema") not in {
         "image_pose_situation_v1", "image_pose_situation_v2",
-        "image_pose_situation_v3", "image_pose_situation_v4",
+        "image_pose_situation_v3", "image_pose_situation_v4", "image_pose_situation_v5",
     }:
         raise RuntimeError(
             "このチェックポイントは状況特徴量に対応していません。"

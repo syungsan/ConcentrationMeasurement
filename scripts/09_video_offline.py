@@ -742,7 +742,7 @@ def main():
         f"temporal sampling: T={T}, sample_fps={sample_fps:g}, "
         f"window={temporal_window_sec:g}s, infer_step={infer_step_sec:g}s"
     )
-    img_tf = build_image_tf(int(train_cfg.img_size))
+    img_tf = build_image_tf(int(train_cfg.img_size), grayscale=train_cfg.grayscale)
 
     det_model_path = args.det_model or ycfg["detection_tracking"]["model"]
     pose_model_path = args.pose_model or ycfg["pose"]["model"]

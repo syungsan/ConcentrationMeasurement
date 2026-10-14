@@ -10,6 +10,7 @@ import json
 import math
 import random
 import sqlite3
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
@@ -31,7 +32,9 @@ from torchvision.transforms import functional as TF
 
 from lib.image_roi import image_model_crop
 from lib.pose_norm import normalize_pose_kpts
-from lib.model_defs import Cfg, Regressor, SituationClassifier, Agg  # ★分離import
+from lib.model_defs import Cfg, Regressor, SituationClassifier, Agg, situation_cfg  # ★分離import
+from lib.training_options import (build_optimizer, build_scheduler, freeze_batchnorm_stats,
+                                  balanced_class_weights, concentration_loss, selection_value)
 from lib.situation import SITUATIONS, situation_one_hot
 from lib.research_schema import eligible_for_training, get_metadata
 
@@ -186,6 +189,72 @@ def set_seed(seed: int):
         torch.cuda.manual_seed_all(seed)
 
 
+def snapshot_state(model: nn.Module) -> Dict[str, torch.Tensor]:
+    # cpu() alone shares storage with CPU parameters and BatchNorm buffers.
+    return {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+
+
+def validate_unique_databases(db_paths: List[Path]) -> None:
+    seen: Dict[Path, int] = {}
+    for index, db_path in enumerate(db_paths):
+        canonical = db_path.resolve()
+        if canonical in seen:
+            raise ValueError(
+                f"Duplicate training database at positions {seen[canonical] + 1} and {index + 1}: "
+                f"{canonical}. List each DB once; duplicates can leak identical windows "
+                "between training and validation."
+            )
+        seen[canonical] = index
+
+
+def build_split_manifest(cfg: Cfg, train_items, val_items) -> dict:
+    return {
+        "split_unit": cfg.split_unit,
+        "seed": cfg.seed,
+        "val_ratio": cfg.val_ratio,
+        "no_validation": cfg.no_validation,
+        "checkpoint_selection": "final_epoch" if cfg.no_validation else cfg.selection_metric,
+        "include_pilot_post": cfg.include_pilot_post,
+        "db_paths": [str(path.resolve()) for path in cfg.db_paths],
+        "train_items": [list(item) for item in train_items],
+        "val_items": [list(item) for item in val_items],
+        "dataset_counts": [
+            {"data_root": str(root), "db_path": str(cfg.db_paths[index]),
+             "train": sum(db_i == index for db_i, _ in train_items),
+             "validation": sum(db_i == index for db_i, _ in val_items)}
+            for index, root in enumerate(cfg.data_roots)
+        ],
+    }
+
+
+def print_training_data_summary(cfg: Cfg, train_items, val_items, *, stage: str, epochs: int) -> None:
+    train_counts = Counter(db_i for db_i, _ in train_items)
+    val_counts = Counter(db_i for db_i, _ in val_items)
+    n_train, n_val = len(train_items), len(val_items)
+    print(f"\n=== 学習開始前のデータ件数: {stage} / {cfg.mode} ===")
+    print("1件 = 1人の1時間区間（segment）。フレーム数とは別の件数です。")
+    for index, root in enumerate(cfg.data_roots):
+        tr, va = train_counts[index], val_counts[index]
+        print(f"  {root.name}: 採用={tr + va:,}件 / 学習={tr:,}件 / 検証={va:,}件")
+    print(f"合計: 採用={n_train + n_val:,}件 / 学習={n_train:,}件 / 検証={n_val:,}件")
+    print(f"時系列: 1件につきT={cfg.T}フレーム / 選択方法={cfg.sample_strategy}")
+    if cfg.mode in ("image", "fusion"):
+        print(f"画像入力: {'常時グレースケール（3チャンネル）' if cfg.grayscale else 'RGB'} / ROI={cfg.image_roi}")
+    if cfg.augmentation != "none":
+        print("Data Augmentation: 有効（読み込み時にランダム変換）")
+        print("保存データの追加: 0件。変換済みデータを別サンプルとして追加する方式ではありません。")
+        print(f"1epochの学習件数: {n_train:,}件 → {n_train:,}件（件数倍率1倍）")
+        print("同じ区間を再び読み込むと変換を再抽選します。異なる変換の総数は固定ではありません。")
+    else:
+        print("Data Augmentation: 無効 / 保存データの追加: 0件")
+        print(f"1epochの学習件数: {n_train:,}件（件数倍率1倍）")
+    print(f"この段階の予定: {epochs}epoch × {n_train:,}件 = 延べ{epochs * n_train:,}件の学習入力")
+    if cfg.no_validation:
+        print("検証なし: 全対象データで指定epochまで学習し、最終epochを保存します。", flush=True)
+    else:
+        print(f"検証: 各epoch {n_val:,}件 / Data Augmentationなし", flush=True)
+
+
 def choose_T_indices(n: int, T: int, strategy: str, is_train: bool) -> List[int]:
     if n <= 0:
         raise ValueError("n must be > 0")
@@ -273,13 +342,10 @@ class MultiSQLiteSegmentDataset(Dataset):
         self.cfg = cfg
         self.items = items
         self.is_train = is_train
+        self.augment = is_train and cfg.augmentation != "none"
 
         aug = []
-        if is_train:
-            aug += [
-                transforms.RandomResizedCrop(cfg.img_size, scale=(0.8, 1.0)),
-            ]
-        else:
+        if not self.augment or cfg.augmentation == "mild":
             aug += [
                 transforms.Resize(cfg.img_size + 32),
                 transforms.CenterCrop(cfg.img_size),
@@ -294,9 +360,12 @@ class MultiSQLiteSegmentDataset(Dataset):
 
         # Sample once per segment: no artificial frame-to-frame flicker.
         self.color_jitter = transforms.ColorJitter(
-            brightness=0.25, contrast=0.25, saturation=0.35, hue=0.03
+            brightness=0.1 if cfg.augmentation == "mild" else 0.25,
+            contrast=0.1 if cfg.augmentation == "mild" else 0.25,
+            saturation=0.0 if cfg.grayscale or cfg.augmentation == "mild" else 0.35,
+            hue=0.0 if cfg.grayscale or cfg.augmentation == "mild" else 0.03,
         )
-        if is_train and cfg.mode in ("skeleton", "fusion") and cfg.K != 17:
+        if self.augment and cfg.mode in ("skeleton", "fusion") and cfg.K != 17:
             raise ValueError("Training horizontal flip requires COCO-17 keypoints")
         self._conns: Dict[int, sqlite3.Connection] = {}
 
@@ -309,6 +378,11 @@ class MultiSQLiteSegmentDataset(Dataset):
 
     def __len__(self):
         return len(self.items)
+
+    def close(self):
+        for connection in self._conns.values():
+            connection.close()
+        self._conns.clear()
 
     def _resolve_path(self, db_i: int, p: str) -> Path:
         dataset_root = self.cfg.data_roots[db_i]
@@ -397,25 +471,44 @@ class MultiSQLiteSegmentDataset(Dataset):
 
         frames = None
         poses = None
-        flip = self.is_train and random.random() < 0.5
+        flip = self.augment and self.cfg.augmentation != "mild" and random.random() < 0.5
         jitter_params = None
         grayscale = False
-        if self.is_train and self.cfg.mode in ("image", "fusion"):
+        if self.augment and self.cfg.mode in ("image", "fusion"):
             jitter = self.color_jitter
             jitter_params = transforms.ColorJitter.get_params(
                 jitter.brightness, jitter.contrast, jitter.saturation, jitter.hue
             )
-            grayscale = random.random() < 0.25
+            grayscale = self.cfg.augmentation != "mild" and not self.cfg.grayscale and random.random() < 0.25
 
         if self.cfg.mode in ("image", "fusion"):
             imgs: List[torch.Tensor] = []
+            crop_fractions = None
             for i in idxs:
                 _t, crop_path, _pose_path = rows[i]
                 p = self._resolve_path(db_i, crop_path)
                 im = Image.open(p).convert("RGB")
                 im = Image.fromarray(image_model_crop(np.asarray(im), self.cfg.image_roi))
+                if self.cfg.grayscale:
+                    im = TF.rgb_to_grayscale(im, num_output_channels=3)
                 if flip:
                     im = TF.hflip(im)
+                if self.augment and self.cfg.augmentation != "mild":
+                    if crop_fractions is None:
+                        top, left, height, width = transforms.RandomResizedCrop.get_params(
+                            im, scale=(0.8, 1.0), ratio=(0.75, 4.0 / 3.0)
+                        )
+                        crop_fractions = (top / im.height, left / im.width,
+                                          height / im.height, width / im.width)
+                    # Track crops can change size; keep relative geometry fixed
+                    # throughout the sequence instead of inventing camera motion.
+                    top_f, left_f, height_f, width_f = crop_fractions
+                    top = min(im.height - 1, round(top_f * im.height))
+                    left = min(im.width - 1, round(left_f * im.width))
+                    height = max(1, min(im.height - top, round(height_f * im.height)))
+                    width = max(1, min(im.width - left, round(width_f * im.width)))
+                    im = TF.resized_crop(im, top, left, height, width,
+                                         [self.cfg.img_size, self.cfg.img_size], antialias=True)
                 if jitter_params is not None:
                     order, brightness, contrast, saturation, hue = jitter_params
                     adjustments = (
@@ -452,6 +545,9 @@ class MultiSQLiteSegmentDataset(Dataset):
                 frames, poses, situation, y = self._load_frames_and_poses(int(db_i), int(seg_id))
                 return frames, poses, situation, torch.tensor(y, dtype=torch.float32)
             except FileNotFoundError:
+                if not self.is_train:
+                    # Evaluation must preserve item identity and sample counts.
+                    raise
                 idx = random.randint(0, len(self.items) - 1)
                 continue
 
@@ -513,6 +609,7 @@ def evaluate(
         return {
             "mse": float("nan"), "rmse": float("nan"), "mae": float("nan"),
             "r2": float("nan"), "spearman": float("nan"), "qwk": float("nan"),
+            "exact_accuracy": float("nan"), "within_one_accuracy": float("nan"),
             "nonfinite_pred": nonfinite_pred, "nonfinite_target": nonfinite_target,
         }
     mse = F.mse_loss(pred, y).item()
@@ -533,6 +630,8 @@ def evaluate(
     return {
         "mse": mse, "rmse": rmse, "mae": mae, "r2": r2,
         "spearman": spearman, "qwk": qwk,
+        "exact_accuracy": (pred.round().clamp(1, 7) == y.round().clamp(1, 7)).float().mean().item(),
+        "within_one_accuracy": ((pred.round().clamp(1, 7) - y.round().clamp(1, 7)).abs() <= 1).float().mean().item(),
         "nonfinite_pred": nonfinite_pred, "nonfinite_target": nonfinite_target,
     }
 
@@ -582,6 +681,7 @@ def _quadratic_weighted_kappa(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+    validate_unique_databases(cfg.db_paths)
     set_seed(cfg.seed)
 
     grouped_items: Dict[str, List[Tuple[int, int]]] = {}
@@ -589,6 +689,8 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
     for db_i, db_path in enumerate(cfg.db_paths):
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
+        registered = int(cur.execute("SELECT COUNT(*) FROM segments").fetchone()[0])
+        print(f"[dataset] {cfg.data_roots[db_i].name}: DB登録={registered:,}区間", flush=True)
         has_excluded_segments = cur.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='excluded_segments'"
         ).fetchone() is not None
@@ -600,7 +702,7 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
         """ if has_excluded_segments else ""
 
         metadata = get_metadata(conn)
-        if cfg.split_unit in {"school", "session"} and metadata is None:
+        if not cfg.no_validation and cfg.split_unit in {"school", "session"} and metadata is None:
             raise RuntimeError(
                 f"{db_path}: research metadata is required for split_unit={cfg.split_unit}; "
                 "run 05_configure_research_dataset.py"
@@ -645,7 +747,9 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
         conn.close()
 
         for seg_id, video_id, t0, t1 in rows:
-            if cfg.split_unit == "window":
+            if cfg.no_validation:
+                group = f"dataset:{db_i}"
+            elif cfg.split_unit == "window":
                 group = f"window:{db_i}:{int(video_id)}:{float(t0):.6f}:{float(t1):.6f}"
             elif cfg.split_unit == "dataset":
                 group = f"dataset:{db_i}"
@@ -656,6 +760,12 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
             grouped_items.setdefault(group, []).append((db_i, int(seg_id)))
 
     groups = sorted(grouped_items)
+    if cfg.no_validation:
+        items = [item for group in groups for item in grouped_items[group]]
+        if not items:
+            raise RuntimeError("No eligible training data")
+        print("Validation disabled: all eligible segments are used for training; holdout groups are ignored", flush=True)
+        return items, []
     if len(groups) < 2:
         raise RuntimeError(
             f"split_unit={cfg.split_unit} produced {len(groups)} group(s); at least 2 are required"
@@ -680,15 +790,44 @@ def fetch_items_window_split(cfg: Cfg) -> Tuple[List[Tuple[int, int]], List[Tupl
     return tr_items, va_items
 
 
+def labels_for_items(cfg: Cfg, items) -> List[float]:
+    """Read labels once per database rather than issuing one query per segment."""
+    lookup = {}
+    for db_i in sorted({db_i for db_i, _ in items}):
+        connection = sqlite3.connect(str(cfg.db_paths[db_i]))
+        try:
+            if cfg.label_source == "consensus":
+                rows = connection.execute("SELECT segment_id, mean_score FROM label_consensus").fetchall()
+                for segment_id, score in rows:
+                    if score is not None:
+                        lookup[(db_i, int(segment_id))] = float(score)
+            else:
+                placeholders = ",".join("?" for _ in cfg.raters)
+                rows = connection.execute(f"SELECT segment_id, score FROM labels WHERE rater IN ({placeholders})", cfg.raters).fetchall()
+                scores = {}
+                for segment_id, score in rows:
+                    if score is not None:
+                        scores.setdefault(int(segment_id), []).append(float(score))
+                for segment_id, values in scores.items():
+                    lookup[(db_i, segment_id)] = agg_scores(values, cfg.agg)
+        finally:
+            connection.close()
+    return [lookup[item] for item in items]
+
+
 def train_one(
         cfg: Cfg,
         situation_state: Optional[Dict[str, torch.Tensor]] = None,
-) -> Tuple[float, Dict[str, torch.Tensor], List[Dict[str, object]]]:
+        split_manifest_path: Optional[Path] = None,
+) -> Tuple[Optional[float], Dict[str, torch.Tensor], List[Dict[str, object]]]:
     set_seed(cfg.seed)
 
     tr_items, va_items = fetch_items_window_split(cfg)
-    if len(tr_items) == 0 or len(va_items) == 0:
+    if split_manifest_path is not None:
+        write_json(split_manifest_path, build_split_manifest(cfg, tr_items, va_items))
+    if len(tr_items) == 0 or (not cfg.no_validation and len(va_items) == 0):
         raise RuntimeError(f"Not enough data. train={len(tr_items)} val={len(va_items)}")
+    print_training_data_summary(cfg, tr_items, va_items, stage="集中度モデル", epochs=cfg.epochs)
 
     ds_tr = MultiSQLiteSegmentDataset(cfg, tr_items, is_train=True)
     ds_va = MultiSQLiteSegmentDataset(cfg, va_items, is_train=False)
@@ -716,21 +855,41 @@ def train_one(
 
     model = Regressor(cfg).to(cfg.device)
     situation_model: Optional[SituationClassifier] = None
-    if situation_state is not None:
+    if situation_state is not None and cfg.use_situation_feature:
         situation_model = SituationClassifier(cfg).to(cfg.device)
         situation_model.load_state_dict(situation_state, strict=True)
         situation_model.eval()
         for parameter in situation_model.parameters():
             parameter.requires_grad_(False)
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    loss_fn = nn.MSELoss()
+    opt = build_optimizer(model, cfg)
+    scheduler = None if cfg.no_validation else build_scheduler(opt, cfg)
+    labels = labels_for_items(cfg, tr_items)
+    if any(label is None for label in labels):
+        raise RuntimeError("training label missing")
+    weights, counts = balanced_class_weights(labels)
+    class_weights = weights.to(cfg.device) if cfg.class_balance else None
+    majority = int(counts.argmax().item()) + 1
+    val_labels = torch.tensor(labels_for_items(cfg, va_items))
+    baseline = float((val_labels.round() == majority).float().mean()) if len(va_items) else None
+    print(f"Training class counts={counts.long().tolist()} majority={majority}; validation constant baseline={baseline}")
+    print(f"pose_features={cfg.pose_features} temporal_pool={cfg.temporal_pool} selection={cfg.selection_metric} "
+          f"balance={cfg.class_balance} ordered={cfg.ordered_ordinal} scheduler={cfg.lr_schedule}")
+    # Do not carry live SQLite connections into spawned DataLoader workers.
+    for dataset in (ds_tr, ds_va):
+        for connection in dataset._conns.values():
+            connection.close()
+        dataset._conns.clear()
+    best_selection = float("inf")
+    stale_epochs = 0
 
     best_mse = float("inf")
     best_state: Optional[Dict[str, torch.Tensor]] = None
     history: List[Dict[str, object]] = []
 
     for ep in range(1, cfg.epochs + 1):
+        epoch_started = time.monotonic()
         model.train()
+        freeze_batchnorm_stats(model, cfg.freeze_batchnorm)
         total = 0.0
         n = 0
         skipped_train_batches = 0
@@ -738,7 +897,9 @@ def train_one(
         train_nonfinite_loss = 0
         train_nonfinite_grad = 0
 
-        for frames, poses, situations, y in dl_tr:
+        for batch_index, (frames, poses, situations, y) in enumerate(dl_tr, 1):
+            if batch_index == 1 or batch_index % 25 == 0 or batch_index == len(dl_tr):
+                print(f"[concentration:{cfg.mode}] epoch {ep}/{cfg.epochs} batch {batch_index}/{len(dl_tr)} elapsed={time.monotonic()-epoch_started:.0f}s", flush=True)
             if frames is not None:
                 frames = frames.to(cfg.device, non_blocking=True)
             if poses is not None:
@@ -771,18 +932,14 @@ def train_one(
                     skipped_train_batches += 1
                     train_nonfinite_pred += int((~torch.isfinite(yhat)).sum().item())
                     continue
-                thresholds = torch.arange(1, 7, device=y.device).unsqueeze(0)
-                # Consensus labels may be fractional. A score of 4.5 therefore
-                # yields full targets below 4 and a 0.5 target at threshold 4.
-                ordinal_target = (y.unsqueeze(1) - thresholds).clamp(0.0, 1.0)
-                loss = F.binary_cross_entropy_with_logits(logits, ordinal_target)
+                loss = concentration_loss(logits, yhat, y, cfg, class_weights)
             else:
                 yhat = model(frames, poses, situations)
                 if not torch.isfinite(yhat).all():
                     skipped_train_batches += 1
                     train_nonfinite_pred += int((~torch.isfinite(yhat)).sum().item())
                     continue
-                loss = loss_fn(yhat, y)
+                loss = concentration_loss(None, yhat, y, cfg, class_weights)
             if not torch.isfinite(loss):
                 skipped_train_batches += 1
                 train_nonfinite_loss += int(y.size(0))
@@ -801,6 +958,20 @@ def train_one(
         tr_mse = total / n if n > 0 else float("nan")
         # Validation reflects autonomous operation: only predicted situation
         # probabilities are supplied when a classifier is available.
+        if not cfg.no_validation:
+            print(f"[concentration:{cfg.mode}] epoch {ep}: validation started ({len(dl_va)} batches)", flush=True)
+        if cfg.no_validation:
+            if n == 0 or not math.isfinite(tr_mse):
+                raise RuntimeError("No finite concentration training updates; final model was not saved")
+            history.append({"epoch": ep, "mode": cfg.mode, "objective": cfg.objective,
+                            "train_loss": tr_mse, "train_samples": n,
+                            "train_skipped_batches": skipped_train_batches,
+                            "lr": opt.param_groups[0]["lr"], "no_validation": True,
+                            "checkpoint_selection": "final_epoch"})
+            best_state = snapshot_state(model)
+            best_mse = None
+            print(f"[{cfg.mode}] epoch {ep}/{cfg.epochs} train_loss={tr_mse:.4f}; validation disabled; retaining final epoch", flush=True)
+            continue
         va = evaluate(model, dl_va, cfg.device, situation_model)
         history.append({
             "epoch": ep,
@@ -818,6 +989,11 @@ def train_one(
             "val_r2": va["r2"],
             "val_spearman": va["spearman"],
             "val_qwk": va["qwk"],
+            "val_exact_accuracy": va["exact_accuracy"],
+            "val_within_one_accuracy": va["within_one_accuracy"],
+            "val_constant_baseline": baseline,
+            "lr": opt.param_groups[0]["lr"],
+            "selection_metric": cfg.selection_metric,
             "val_nonfinite_pred": va.get("nonfinite_pred", 0),
             "val_nonfinite_target": va.get("nonfinite_target", 0),
         })
@@ -825,7 +1001,7 @@ def train_one(
         print(
             f"[{cfg.mode}] ep{ep:03d} train_mse={tr_mse:.4f} "
             f"val_rmse={va['rmse']:.4f} val_mae={va['mae']:.4f} "
-            f"val_r2={va['r2']:.4f} val_rho={va['spearman']:.4f} val_qwk={va['qwk']:.4f} "
+            f"val_exact={va['exact_accuracy']:.4f} val_r2={va['r2']:.4f} val_rho={va['spearman']:.4f} val_qwk={va['qwk']:.4f} "
             f"val_nonfinite_pred={va.get('nonfinite_pred', 0)} "
             f"train_skipped={skipped_train_batches}"
         )
@@ -839,11 +1015,25 @@ def train_one(
             )
             break
 
-        if va["mse"] < best_mse:
+        criterion = selection_value(va, cfg.selection_metric)
+        if not math.isfinite(criterion):
+            raise RuntimeError(f"non-finite selection metric: {cfg.selection_metric}")
+        if scheduler is not None:
+            scheduler.step(criterion)
+        if criterion < best_selection:
+            best_selection = criterion
             best_mse = va["mse"]
-            best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+            best_state = snapshot_state(model)
+            stale_epochs = 0
+        else:
+            stale_epochs += 1
+        if cfg.early_stopping_patience > 0 and stale_epochs >= cfg.early_stopping_patience:
+            print(f"Early stopping: {stale_epochs} epochs without {cfg.selection_metric} improvement")
+            break
 
     assert best_state is not None
+    ds_tr.close()
+    ds_va.close()
     return best_mse, best_state, history
 
 
@@ -891,8 +1081,11 @@ def evaluate_situation(
 def train_situation_one(
         cfg: Cfg, epochs: int,
 ) -> Tuple[Dict[str, float], Dict[str, torch.Tensor], List[Dict[str, object]]]:
+    cfg = situation_cfg(cfg)
     set_seed(cfg.seed)
     tr_items, va_items = fetch_items_window_split(cfg)
+    print(f"Situation settings: pose={cfg.pose_features}, pool={cfg.temporal_pool}, backbone_lr_scale={cfg.backbone_lr_scale}, freeze_bn={cfg.freeze_batchnorm}, augmentation={cfg.augmentation}", flush=True)
+    print_training_data_summary(cfg, tr_items, va_items, stage="シチュエーション分類モデル", epochs=epochs)
     ds_tr = MultiSQLiteSegmentDataset(cfg, tr_items, is_train=True)
     ds_va = MultiSQLiteSegmentDataset(cfg, va_items, is_train=False)
     dl_tr = DataLoader(
@@ -908,18 +1101,23 @@ def train_situation_one(
         prefetch_factor=2 if cfg.num_workers > 0 else None,
     )
     model = SituationClassifier(cfg).to(cfg.device)
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
-    )
+    optimizer = build_optimizer(model, cfg)
+    scheduler = None if cfg.no_validation else build_scheduler(optimizer, cfg)
+    stale_epochs = 0
     best_loss = float("inf")
     best_metrics: Dict[str, float] = {}
     best_state: Optional[Dict[str, torch.Tensor]] = None
     history: List[Dict[str, object]] = []
     for epoch in range(1, epochs + 1):
+        epoch_started = time.monotonic()
         model.train()
+        freeze_batchnorm_stats(model, cfg.freeze_batchnorm)
         skipped_train_batches = 0
         train_nonfinite_logits = 0
-        for frames, poses, situations, _y in dl_tr:
+        training_total, training_count = 0.0, 0
+        for batch_index, (frames, poses, situations, _y) in enumerate(dl_tr, 1):
+            if batch_index == 1 or batch_index % 25 == 0 or batch_index == len(dl_tr):
+                print(f"[situation:{cfg.mode}] epoch {epoch}/{epochs} batch {batch_index}/{len(dl_tr)} elapsed={time.monotonic()-epoch_started:.0f}s", flush=True)
             if frames is not None:
                 frames = frames.to(cfg.device, non_blocking=True)
             if poses is not None:
@@ -939,11 +1137,25 @@ def train_situation_one(
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            training_total += float(loss.detach()) * target.numel()
+            training_count += target.numel()
+        if cfg.no_validation:
+            if not training_count:
+                raise RuntimeError("No finite situation training updates; final model was not saved")
+            best_state = snapshot_state(model)
+            best_metrics = {"validation_enabled": False, "train_loss": training_total / training_count}
+            history.append({"epoch": epoch, "mode": cfg.mode, "train_loss": best_metrics["train_loss"],
+                            "train_samples": training_count, "no_validation": True,
+                            "lr": optimizer.param_groups[0]["lr"], "checkpoint_selection": "final_epoch"})
+            print(f"[situation:{cfg.mode}] epoch {epoch}/{epochs} train_loss={best_metrics['train_loss']:.4f}; validation disabled; retaining final epoch", flush=True)
+            continue
+        print(f"[situation:{cfg.mode}] epoch {epoch}: validation started ({len(dl_va)} batches)", flush=True)
         metrics = evaluate_situation(model, dl_va, cfg.device)
         history.append({
             "epoch": epoch,
             "mode": cfg.mode,
             "val_loss": metrics["loss"],
+            "lr": optimizer.param_groups[0]["lr"],
             "val_accuracy": metrics["accuracy"],
             "val_nonfinite_logits": metrics.get("nonfinite_logits", 0),
             "val_skipped_batches": metrics.get("skipped_batches", 0),
@@ -956,15 +1168,25 @@ def train_situation_one(
             f"val_nonfinite_logits={metrics.get('nonfinite_logits', 0)} "
             f"train_nonfinite_logits={train_nonfinite_logits} train_skipped={skipped_train_batches}"
         )
+        if scheduler is not None and math.isfinite(metrics["loss"]):
+            scheduler.step(metrics["loss"])
         if math.isfinite(metrics["loss"]) and metrics["loss"] < best_loss:
             best_loss = metrics["loss"]
             best_metrics = metrics
-            best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+            best_state = snapshot_state(model)
+            stale_epochs = 0
+        else:
+            stale_epochs += 1
+        if cfg.early_stopping_patience > 0 and stale_epochs >= cfg.early_stopping_patience:
+            print("Early stopping situation classifier")
+            break
     if best_state is None:
         raise RuntimeError(
             "Situation classifier did not produce a finite validation loss. "
             "Try lowering --lr, reducing transformer size/layers, or checking input features for NaN/inf."
         )
+    ds_tr.close()
+    ds_va.close()
     return best_metrics, best_state, history
 
 
@@ -1002,6 +1224,8 @@ def parse_args():
 
     ap.add_argument("--temporal", type=str, default="gru", choices=["gru", "transformer"])
     ap.add_argument("--mode", type=str, default="fusion", choices=["image", "skeleton", "fusion"])
+    ap.add_argument("--no_validation", "--no-validation", action="store_true",
+                    help="Use all eligible data; save final epoch, disable validation-based scheduling/early stopping.")
     ap.add_argument("--val_ratio", type=float, default=0.2)
     ap.add_argument("--objective", choices=["ordinal", "regression"], default="ordinal")
     ap.add_argument(
@@ -1041,6 +1265,25 @@ def parse_args():
     ap.set_defaults(use_situation_feature=True)
 
     ap.add_argument("--sample_strategy", type=str, default="uniform", choices=["uniform", "random"])
+    ap.add_argument("--augmentation", choices=["standard", "mild", "none"], default="standard",
+                    help="none disables image/pose augmentation for controlled comparisons.")
+    ap.add_argument("--grayscale", action="store_true",
+                    help="Always use grayscale images in training/evaluation/inference; "
+                         "can be combined with --augmentation standard.")
+    ap.add_argument("--situation_patience", type=int, default=None,
+                    help="Override situation early-stopping patience independently; 0 disables it.")
+    ap.add_argument("--situation_profile", choices=["shared", "legacy"], default="shared",
+                    help="legacy isolates situation classifier from concentration model optimization changes.")
+    ap.add_argument("--pose_features", choices=["raw", "motion"], default="raw")
+    ap.add_argument("--temporal_pool", choices=["last", "mean"], default="last")
+    ap.add_argument("--ordered_ordinal", action="store_true")
+    ap.add_argument("--backbone_lr_scale", type=float, default=1.0)
+    ap.add_argument("--freeze_batchnorm", action="store_true")
+    ap.add_argument("--lr_schedule", choices=["none", "plateau"], default="none")
+    ap.add_argument("--early_stopping_patience", type=int, default=0)
+    ap.add_argument("--selection_metric", choices=["mse", "mae", "exact_accuracy", "qwk"], default="mse")
+    ap.add_argument("--class_balance", action="store_true")
+    ap.add_argument("--score_loss_weight", type=float, default=0.0)
     ap.add_argument("--img_size", type=int, default=224)
     ap.add_argument("--image_roi", type=str, default="", choices=["", "upper_body", "full_body"])
     ap.add_argument(
@@ -1065,6 +1308,16 @@ def main():
     if not 0.0 <= args.situation_teacher_forcing <= 1.0:
         raise ValueError("situation_teacher_forcing must be between 0 and 1")
 
+    if args.backbone_lr_scale <= 0 or args.score_loss_weight < 0 or args.early_stopping_patience < 0:
+        raise ValueError("invalid learning controls: scale > 0, weight/patience >= 0 required")
+    if args.pose_features == "motion" and args.sample_strategy != "uniform":
+        raise ValueError("motion features require uniform sampling for comparable frame displacements")
+    if args.situation_patience is not None and args.situation_patience < 0:
+        raise ValueError("situation_patience must be nonnegative")
+    if args.epochs < 1 or args.situation_epochs < 0:
+        raise ValueError("epochs must be positive; situation_epochs must be nonnegative")
+    if args.no_validation:
+        print("No validation: saving final epochs; selection_metric, plateau scheduler and early stopping are disabled", flush=True)
     file_here = Path(__file__).resolve()
     repo_root = find_repo_root(file_here.parent)
     ycfg = load_yaml_cfg(repo_root)
@@ -1118,19 +1371,46 @@ def main():
         device=resolve_device(args.device),
         num_workers=args.num_workers,
         sample_strategy=args.sample_strategy,  # type: ignore[arg-type]
+        augmentation=args.augmentation,
+        grayscale=args.grayscale,
+        situation_config=({"pose_features": "raw", "temporal_pool": "last",
+                           "backbone_lr_scale": 1.0, "freeze_batchnorm": False,
+                           "lr_schedule": "none", "early_stopping_patience": 0,
+                           "augmentation": "none"} if args.situation_profile == "legacy" else None),
+        pose_features=args.pose_features,
+        temporal_pool=args.temporal_pool,
+        ordered_ordinal=args.ordered_ordinal,
+        backbone_lr_scale=args.backbone_lr_scale,
+        freeze_batchnorm=args.freeze_batchnorm,
+        lr_schedule=args.lr_schedule,
+        early_stopping_patience=args.early_stopping_patience,
+        selection_metric=args.selection_metric,
+        class_balance=args.class_balance,
+        score_loss_weight=args.score_loss_weight,
         img_size=args.img_size,
         image_roi=image_roi,  # type: ignore[arg-type]
         fusion_image_scale=args.fusion_image_scale,
         T=T,
         val_ratio=args.val_ratio,
+        no_validation=args.no_validation,
     )
 
-    results: Dict[str, float] = {}
+    if args.situation_patience is not None:
+        base = replace(base, situation_config={**(base.situation_config or {}),
+                                              "early_stopping_patience": args.situation_patience})
+    results: Dict[str, Optional[float]] = {}
     states: Dict[str, Dict[str, torch.Tensor]] = {}
     situation_results: Dict[str, Dict[str, float]] = {}
     situation_states: Dict[str, Dict[str, torch.Tensor]] = {}
     concentration_history: Dict[str, List[Dict[str, object]]] = {}
     situation_history: Dict[str, List[Dict[str, object]]] = {}
+    split_manifests: Dict[str, dict] = {}
+    out = repo_root / args.save_name
+    report_dir = (
+        Path(args.report_dir).resolve()
+        if args.report_dir.strip()
+        else out.with_name(f"{out.stem}_training_report")
+    )
 
     # --mode が指定されていればそれだけ、指定がなければ3モード全部
     modes_to_run = [args.mode] if args.mode else ["image", "skeleton", "fusion"]
@@ -1143,19 +1423,17 @@ def main():
             situation_states[m] = sit_state
             situation_history[m] = sit_history
         best, state, history = train_one(
-            cfg, situation_state=situation_states.get(m)
+            cfg, situation_state=situation_states.get(m),
+            split_manifest_path=report_dir / f"{m}_split_manifest.json",
+        )
+        split_manifests[m] = json.loads(
+            (report_dir / f"{m}_split_manifest.json").read_text(encoding="utf-8")
         )
         results[m] = best
         states[m] = state
         concentration_history[m] = history
-        print(f"BEST[{m}] mse={best:.6f}")
+        print(f"FINAL[{m}] epoch={len(history)} (no validation)" if cfg.no_validation else f"BEST[{m}] mse={best:.6f}")
 
-    out = repo_root / args.save_name
-    report_dir = (
-        Path(args.report_dir).resolve()
-        if args.report_dir.strip()
-        else out.with_name(f"{out.stem}_training_report")
-    )
     write_training_artifacts(report_dir, concentration_history, situation_history)
     print("training report:", report_dir)
 
@@ -1184,8 +1462,9 @@ def main():
             "training_history": concentration_history,
             "situation_history": situation_history,
             "training_report_dir": str(report_dir),
+            "training_split_manifests": split_manifests,
             "situation_labels": list(SITUATIONS),
-            "feature_schema": "image_pose_situation_v4",
+            "feature_schema": "image_pose_situation_v5",
         },
         out
     )

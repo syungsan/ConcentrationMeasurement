@@ -13,9 +13,9 @@ python scripts/04_extract_frames_assets.py --data_root datasets/{your_folder}
 # 研究情報を設定
 python scripts/05_configure_research_dataset.py datasets/{your_folder} {school_name} {grade} {class_name} (normal or [after ab pilot_post]) --minutes-after 0
 
-# 評価者が1名だけの場合
+# 評価者が1名だけの場合のトレーニング
 python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_folder2} --label_source individual --raters {raters} --mode (skeleton or fusion) --save_name models/{your_model_name}.pt --temporal transformer --lr 1e-4 (--include_pilot_post) --fusion_image_scale 0.5
-# 評価者が複数人でデータベースをマージする場合
+# 評価者が複数人でデータベースをマージする場合のトレーニング
 python scripts/tools/merge_rater_databases.py --base-db datasets/{your_folder}/db/dataset.sqlite --inputs returned_dbs/{your_filename1}.sqlite returned_dbs/{your_filename2}.sqlite --output merged/{your_filename}_merged.sqlite --overwrite
 python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_folder2} --label_source (individual or consensus) --raters {raters} --mode (skeleton or fusion) --save_name models/{your_model_name}.pt --temporal transformer --lr 1e-4 (--include_pilot_post) --fusion_image_scale 0.5
 
@@ -23,9 +23,9 @@ python scripts/07_train.py --data_roots datasets/{your_folder1},datasets/{your_f
 python scripts/tools/evaluate_labeled_dataset.py --model models/{your_model}.pt --data_roots datasets/{your_test_datasets} --label_source (individual or consensus) --raters {raters} --mode (skeleton or fusion) --output-dir outputs/{your_folder}
 
 # 動画予測 目モザイク + 骨格線 + stable_id（おすすめ）
-python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --mosaic_eyes --stable_id --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
+python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annotated.mp4 --draw_skeleton --mosaic_eyes --stable_id --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
 # stable_id を強めたいとき（交差が多い教室向け）
-python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annot.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
+python scripts/09_video_offline.py --ckpt models/{your_model}.pt --mode (skeleton or fusion) (--data_root datasets/{your_folder} or --video input/{your_video}) --annotate_out outputs/annotated.mp4 --draw_skeleton --stable_id --stable_iou_min 0.10 --stable_w_iou 3.0 --stable_w_center 1.2 --log_db outputs/pred_log.sqlite --sample_fps 2 --infer_step_sec 0.5
 
 # リアルタイム予測
 # stable_id + fullscreen toggle
@@ -40,3 +40,75 @@ python scripts/tools/apply_ab_interval.py --db outputs/pred_log.sqlite --start {
 python scripts/10_aggregate_predictions.py --db outputs/pred_log.sqlite --out_dir outputs --bin_sec 5
 python scripts/tools/make_situation_bg_chart.py --input outputs/agg_timeseries_sec.xlsx --output outputs/agg_timeseries_sec_situation_bg.xlsx
 python scripts/13_ab_intervention_report.py --db outputs/pred_log.sqlite --output outputs/ab_intervention_report.xlsx
+
+シチュエーションとDataAugmentationを抜いて学習
+python scripts/07_train.py `
+  --data_roots datasets/20260227_unnan_nishi_5-1_1,datasets/20260227_unnan_nishi_5-1_2,datasets/20260311_unnan_nishi_5-1_1,datasets/20260313_unnan_nishi_5-1_1_a `
+  --label_source individual --raters tadano `
+  --mode fusion --temporal transformer `
+  --lr 1e-4 --fusion_image_scale 0.5 `
+  --include_pilot_post `
+  --T 10 --sample_strategy uniform `
+  --situation_epochs 0 --grayscale --augmentation none `
+  --save_name models/pre_test_fusion_transformer_noaug_nosituation.pt
+
+python scripts/tools/evaluate_labeled_dataset.py `
+  --model models/pre_test_fusion_transformer_noaug_nosituation.pt `
+  --data_roots datasets/20260227_unnan_nishi_5-1_1 `
+  --label_source individual --raters tadano `
+  --mode fusion --situation-source true `
+  --output-dir outputs/pre_test_noaug_nosituation
+
+シチュエーションとDataAugmentationを入れて学習
+python scripts/07_train.py `
+  --data_roots datasets/20260227_unnan_nishi_5-1_1,datasets/20260227_unnan_nishi_5-1_2,datasets/20260311_unnan_nishi_5-1_1,datasets/20260313_unnan_nishi_5-1_1_a `
+  --label_source individual --raters tadano `
+  --mode fusion --temporal transformer `
+  --lr 1e-4 --fusion_image_scale 0.5 `
+  --include_pilot_post `
+  --T 10 --sample_strategy uniform `
+  --situation_epochs 10 --grayscale --augmentation standard `
+  --use-situation-feature `
+  --save_name models/pre_test_fusion_transformer_aug_situation.pt
+
+python scripts/tools/evaluate_labeled_dataset.py `
+  --model models/pre_test_fusion_transformer_aug_situation.pt `
+  --data_roots datasets/20260227_unnan_nishi_5-1_1 `
+  --label_source individual --raters tadano `
+  --mode fusion --situation-source predicted `
+  --output-dir outputs/pre_test_aug_situation
+
+python scripts/07_train.py `
+  --data_roots datasets/20260227_unnan_nishi_5-1_1,datasets/20260227_unnan_nishi_5-1_2,datasets/20260311_unnan_nishi_5-1_1,datasets/20260313_unnan_nishi_5-1_1_a `
+  --label_source individual --raters tadano --include_pilot_post `
+  --mode fusion --temporal transformer --T 10 --sample_strategy uniform `
+  --image_roi upper_body --fusion_image_scale 0.5 `
+  --pose_features motion --temporal_pool mean `
+  --ordered_ordinal --score_loss_weight 0.2 `
+  --lr 1e-4 --backbone_lr_scale 0.1 --freeze_batchnorm `
+  --lr_schedule plateau --epochs 50 --early_stopping_patience 10 `
+  --augmentation none --situation_epochs 10 --situation_teacher_forcing 0 `
+  --split_unit dataset --holdout_groups dataset:0 `
+  --selection_metric mse --situation_profile legacy `
+  --save_name models/improved_fusion_motion.pt
+
+$trainingRoots = "datasets/20260227_unnan_nishi_5-1_1,datasets/20260227_unnan_nishi_5-1_2,datasets/20260311_unnan_nishi_5-1_1,datasets/20260313_unnan_nishi_5-1_1_a"
+
+python scripts/tools/run_accuracy_experiments.py `
+  --data_roots $trainingRoots --raters tadano `
+  --split_unit window --variants baseline,optimization,motion,ordered,balanced,mild,standard,no_situation,grayscale `
+  --selection_metric exact_accuracy --epochs 50 --situation_epochs 20 `
+  --output_dir outputs/window_screening --execute
+
+python scripts/tools/run_accuracy_experiments.py `
+  --data_roots $trainingRoots --raters tadano `
+  --cross_validation dataset `
+  --variants no_situation,mild --seeds 42 `
+  --selection_metric exact_accuracy --epochs 50 --situation_epochs 20 `
+  --concentration_patience 5 --situation_patience 3 `
+  --output_dir outputs/cv_quick --execute --final_train
+
+$trainingCommand = Get-Content "outputs/cv_quick/final_training_command.json" -Raw | ConvertFrom-Json
+$trainingProgram = $trainingCommand[0]
+$trainingArguments = @($trainingCommand | Select-Object -Skip 1)
+& $trainingProgram @trainingArguments

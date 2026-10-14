@@ -642,7 +642,7 @@ def main():
     current_situation = args.situation or SITUATIONS[0]
     current_situation_probs = torch.zeros(len(SITUATIONS), dtype=torch.float32)
     current_situation_probs[SITUATIONS.index(current_situation)] = 1.0
-    img_tf = build_image_tf(int(train_cfg.img_size))
+    img_tf = build_image_tf(int(train_cfg.img_size), grayscale=train_cfg.grayscale)
 
     conn = connect(db_path)
     init_db(conn)
