@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.devices import face_device, face_providers, face_context_id
+from lib.face_registration import padded_detection_image, rotate_frame
 
 import cv2
 import numpy as np
@@ -71,27 +72,25 @@ def detect_face_with_fallback(app, img, pad=80, target_size=640):
     """
     小さい顔クロップだと検出できないことがあるので、
     1回目: そのまま検出
-    2回目: 失敗したら余白を付けてリサイズして再検出
+    失敗時: 縦横比を保つ余白付き画像で再検出し、90/270/180度も試す
     """
     faces = app.get(img)
     if faces:
         return faces
 
-    h, w = img.shape[:2]
-
-    # 周囲に黒枠パディング
-    padded = cv2.copyMakeBorder(
-        img,
-        pad, pad, pad, pad,
-        borderType=cv2.BORDER_CONSTANT,
-        value=(0, 0, 0),
-    )
-
-    # 大きめにリサイズ
-    padded = cv2.resize(padded, (target_size, target_size))
-
-    faces = app.get(padded)
-    return faces
+    # Keep aspect ratio and retry orientations for older sideways captures.
+    # Embeddings are computed by app.get on the same transformed image that
+    # produced the landmarks; downstream code does not reuse its coordinates.
+    # Fixed 80px is too little context for large phone close-ups. Keep a second
+    # scale so both small crops and faces filling the image remain detectable.
+    paddings = list(dict.fromkeys([pad, max(pad, round(max(img.shape[:2]) * .5))]))
+    for angle in (0, 90, 270, 180):
+        for padding in paddings:
+            candidate = padded_detection_image(rotate_frame(img, angle), padding, target_size)
+            faces = app.get(candidate)
+            if faces:
+                return faces
+    return []
 
 
 def build_face_db(
@@ -161,7 +160,10 @@ def build_face_db(
             if img_path.suffix.lower() not in img_exts:
                 continue
 
-            img = cv2.imread(str(img_path))
+            try:
+                img = cv2.imdecode(np.fromfile(str(img_path), dtype=np.uint8), cv2.IMREAD_COLOR)
+            except (OSError, ValueError, cv2.error):
+                img = None
             if img is None:
                 print(f"  [WARN] 読み込み失敗: {img_path}")
                 continue

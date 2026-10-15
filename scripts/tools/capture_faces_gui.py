@@ -13,6 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.devices import face_device, face_providers, face_context_id
+from lib.face_registration import rotate_frame, registration_crop, detect_capture_faces
 
 import cv2
 
@@ -119,6 +120,7 @@ def capture_faces(
         screen_h: int | None = None,
         stop_event=None,
         video_path: str | None = None,
+        rotation: int = 0,
 ):
     """顔画像収集（独立プロセスのメインスレッドで実行する）。"""
     if FaceAnalysis is None:
@@ -167,10 +169,14 @@ def capture_faces(
         cap.release()
         raise RuntimeError(f"入力を開けません: {source}")
 
+    if video_path is not None and hasattr(cv2, "CAP_PROP_ORIENTATION_AUTO"):
+        cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)
+        print("[INFO] 動画の回転メタデータを自動適用します（対応バックエンドのみ）。")
     try:
         start_time = time.time()
         last_save_time = -float("inf")
         saved_count = 0
+        next_index = max((int(path.stem) for path in person_dir.glob("*.jpg") if path.stem.isdigit()), default=-1) + 1
         frame_index = 0
         fps = cap.get(cv2.CAP_PROP_FPS) if video_path is not None else 0.0
         if video_path is not None and (not math.isfinite(fps) or fps <= 0):
@@ -194,11 +200,15 @@ def capture_faces(
                 )
                 break
 
-            if first_frame and screen_w is not None and screen_h is not None:
+            frame = rotate_frame(frame, rotation)
+            if first_frame:
                 fh, fw = frame.shape[:2]
-                x = (screen_w - fw) // 2
-                y = (screen_h - fh) // 2
-                cv2.moveWindow(win_name, max(0, x), max(0, y))
+                display_scale = min(1.0, (screen_w or 1920) * .8 / fw, (screen_h or 1080) * .8 / fh)
+                display_w, display_h = max(1, round(fw*display_scale)), max(1, round(fh*display_scale))
+                cv2.resizeWindow(win_name, display_w, display_h)
+                cv2.moveWindow(win_name, max(0, ((screen_w or 1920)-display_w)//2),
+                               max(0, ((screen_h or 1080)-display_h)//2))
+                print(f"[INFO] 入力画像: {fw}x{fh} / 表示: {display_w}x{display_h}（保存は元解像度）")
                 first_frame = False
 
             now = time.time()
@@ -215,7 +225,7 @@ def capture_faces(
             h, w = frame.shape[:2]
 
             # 顔検出
-            faces = app.get(frame)
+            faces = detect_capture_faces(app, frame)
 
             # 一番大きな顔を選択
             best_face = None
@@ -228,27 +238,20 @@ def capture_faces(
                     best_face = f
 
             if best_face is not None:
-                x1, y1, x2, y2 = best_face.bbox
-                x1 = int(max(0, x1 - margin))
-                y1 = int(max(0, y1 - margin))
-                x2 = int(min(w - 1, x2 + margin))
-                y2 = int(min(h - 1, y2 + margin))
-
-                if x2 > x1 and y2 > y1:
-                    face_crop = frame[y1:y2, x1:x2]
-
-                    # 一定間隔ごとに保存（min_interval 秒）
+                face_crop = registration_crop(frame, best_face.bbox, margin)
+                if face_crop is not None:
                     if elapsed - last_save_time >= min_interval:
-                        save_path = person_dir / f"{saved_count:04d}.jpg"
-                        cv2.imwrite(str(save_path), face_crop)
+                        save_path = person_dir / f"{next_index:04d}.jpg"
+                        ok, encoded = cv2.imencode(".jpg", face_crop, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                        if not ok:
+                            raise RuntimeError(f"顔画像を保存できません: {save_path}")
+                        encoded.tofile(str(save_path))
+                        next_index += 1
                         saved_count += 1
                         last_save_time = elapsed
-                        print(f"[SAVE] {save_path.name} (t={elapsed:.1f}s)")
-
-                    # 画面上に矩形を表示
-                    cv2.rectangle(
-                        frame, (x1, y1), (x2, y2), (0, 255, 0), 2
-                    )
+                        print(f"[SAVE] {save_path.name} {face_crop.shape[1]}x{face_crop.shape[0]} (t={elapsed:.1f}s)")
+                    x1, y1, x2, y2 = map(int, best_face.bbox)
+                    cv2.rectangle(frame, (max(0,x1),max(0,y1)), (min(w-1,x2),min(h-1,y2)), (0,255,0), 2)
 
             # 経過時間も表示
             cv2.putText(
@@ -266,7 +269,7 @@ def capture_faces(
                 cv2.LINE_AA,
             )
 
-            cv2.imshow(win_name, frame)
+            cv2.imshow(win_name, cv2.resize(frame, (display_w, display_h), interpolation=cv2.INTER_AREA))
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord("q"):
                 print("[INFO] キー入力により中断されました。")
@@ -314,7 +317,7 @@ class FaceCaptureGUI:
         self.screen_h = root.winfo_screenheight()
 
         # ウィンドウ自体も少し小さめで中央に
-        win_w, win_h = 600, 410
+        win_w, win_h = 650, 460
         x = (self.screen_w - win_w) // 2
         y = (self.screen_h - win_h) // 2
         self.root.geometry(f"{win_w}x{win_h}+{x}+{y}")
@@ -335,6 +338,7 @@ class FaceCaptureGUI:
         self.var_source = tk.StringVar(value="camera")
         self.var_video = tk.StringVar()
         self.var_device = tk.StringVar(value="auto")
+        self.var_rotation = tk.StringVar(value="0")
 
         self._build_widgets()
 
@@ -448,9 +452,13 @@ class FaceCaptureGUI:
         self.btn_video.pack(side="left", padx=5)
         self.update_source_state()
 
+        ttk.Label(frame, text="追加回転（時計回り）:").grid(row=7, column=0, sticky="e", **pad)
+        ttk.Combobox(frame, textvariable=self.var_rotation, values=["0", "90", "180", "270"],
+                     state="readonly", width=8).grid(row=7, column=1, sticky="w", **pad)
+
         # ボタン
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=7, column=0, columnspan=2, pady=15)
+        btn_frame.grid(row=8, column=0, columnspan=2, pady=15)
 
         self.btn_start = ttk.Button(
             btn_frame, text="開始", command=self.on_start
@@ -552,6 +560,7 @@ class FaceCaptureGUI:
             screen_w=self.screen_w,
             screen_h=self.screen_h,
             video_path=video_path,
+            rotation=int(self.var_rotation.get()),
         )
         self.capture_process = self.process_context.Process(
             target=capture_worker,
