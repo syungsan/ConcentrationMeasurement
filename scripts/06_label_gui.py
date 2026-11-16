@@ -2531,7 +2531,12 @@ class LabelFastApp(QWidget):
         self.conn.commit()
         self.log_event(rater, action, int(tile.seg_id), None, None)
         self.status.setText(f"状態: {message}")
-        self.reload_current_window()
+        tile.set_excluded(action == "segment_exclude")
+        self.refresh_info()
+        self.refresh_window_table()
+        self.select_tile(self.selected_idx, trigger_anim=False)
+        if tile.excluded:
+            self.auto_advance()
 
     def delete_selected_label(self):
         r = self.rater()
