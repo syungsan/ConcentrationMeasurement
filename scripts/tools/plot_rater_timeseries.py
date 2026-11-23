@@ -12,7 +12,14 @@ from pathlib import Path
 def load_series(db_path: Path, raters: list[str] | None = None,
                 track_id: int | None = None) -> tuple[list[dict], dict[int, str]]:
     """Read only; mean across labeled, non-excluded tracks within each window."""
+    rows, videos, _ = load_ratings(db_path, raters, track_id)
+    return rows, videos
+
+
+def load_ratings(db_path: Path, raters: list[str] | None = None,
+                 track_id: int | None = None) -> tuple[list[dict], dict[int, str], dict[str, list[int]]]:
     with closing(sqlite3.connect(db_path.resolve().as_uri() + '?mode=ro', uri=True)) as conn:
+        conn.execute('BEGIN')
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if not {'videos', 'windows', 'segments', 'labels'} <= tables:
             raise ValueError('videos/windows/segments/labels がある dataset DB を指定してください。')
@@ -36,9 +43,14 @@ def load_series(db_path: Path, raters: list[str] | None = None,
         if track_id is not None:
             predicates.append('s.track_id=?')
             params.append(track_id)
-        rows = conn.execute('''SELECT s.window_id,l.rater,AVG(l.score),COUNT(*)
-            FROM labels l JOIN segments s ON s.id=l.segment_id
-            WHERE ''' + ' AND '.join(predicates) + ' GROUP BY s.window_id,l.rater', params).fetchall()
+        eligible = ' FROM labels l JOIN segments s ON s.id=l.segment_id WHERE ' + ' AND '.join(predicates)
+        rows = conn.execute('SELECT s.window_id,l.rater,AVG(l.score),COUNT(*)'
+                            + eligible + ' GROUP BY s.window_id,l.rater', params).fetchall()
+        frequencies = {name: [0] * 7 for name in sorted(selected)}
+        for name, score, count in conn.execute('SELECT l.rater,l.score,COUNT(*)' + eligible
+                                               + ' AND l.score IN (1,2,3,4,5,6,7) GROUP BY l.rater,l.score', params):
+            if name in frequencies:
+                frequencies[name][int(score) - 1] = count
         values = {(wid, name): (float(score), int(n)) for wid, name, score, n in rows}
         result = []
         for wid, vid, start, end in windows:
@@ -48,7 +60,7 @@ def load_series(db_path: Path, raters: list[str] | None = None,
                                    t_end=float(end), rater=name, score=score, n_labeled=count))
         if not any(row['score'] is not None for row in result):
             raise ValueError('指定条件で有効な評価がありません（未評価・スキップ・対象外を除く）。')
-        return result, videos
+        return result, videos, frequencies
 
 
 def line_points(rows: list[dict]) -> tuple[list[float], list[float]]:
@@ -93,7 +105,8 @@ def smooth_values(values: list[float], window: int = 1) -> list[float]:
 
 def write_outputs(rows: list[dict], videos: dict[int, str], out_dir: Path,
                   title: str, track_id: int | None = None, show: bool = False,
-                  smooth_window: int = 1) -> list[Path]:
+                  smooth_window: int = 1, *, db_stem: str = '',
+                  frequencies: dict[str, list[int]] | None = None) -> list[Path]:
     smooth_values([], smooth_window)  # validate before writing outputs
     import matplotlib
     matplotlib.use('QtAgg' if show else 'Agg')
@@ -108,7 +121,17 @@ def write_outputs(rows: list[dict], videos: dict[int, str], out_dir: Path,
     plt.rcParams['svg.fonttype'] = 'path'
     out_dir.mkdir(parents=True, exist_ok=True)
     outputs = []
-    csv_path = out_dir / 'ratings_timeseries.csv'
+    prefix = f'{db_stem}_' if db_stem else ''
+
+    def save_figure(fig, stem: str) -> None:
+        for suffix in ('png', 'svg'):
+            path = out_dir / f'{prefix}{stem}.{suffix}'
+            fig.savefig(path, dpi=160)
+            outputs.append(path)
+        if not show:
+            plt.close(fig)
+
+    csv_path = out_dir / f'{prefix}ratings_timeseries.csv'
     with csv_path.open('w', encoding='utf-8-sig', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0]))
         writer.writeheader()
@@ -140,12 +163,22 @@ def write_outputs(rows: list[dict], videos: dict[int, str], out_dir: Path,
         ax.legend(title='評価者', loc='upper left', bbox_to_anchor=(1.01, 1))
         fig.text(0.02, 0.015, '未評価・スキップ区間は線を接続しません。平均の対象人数は評価者・区間によって異なります。', fontsize=9)
         fig.tight_layout(rect=(0, 0.04, 1, 1))
-        for suffix in ('png', 'svg'):
-            path = out_dir / f'concentration_video_{vid}.{suffix}'
-            fig.savefig(path, dpi=160)
-            outputs.append(path)
-        if not show:
-            plt.close(fig)
+        save_figure(fig, f'concentration_video_{vid}')
+    if frequencies:
+        from matplotlib.ticker import MaxNLocator
+        scores = range(1, 8)
+        for index, (name, counts) in enumerate(frequencies.items(), start=1):
+            fig, ax = plt.subplots(figsize=(8, 5))
+            bars = ax.bar(scores, counts)
+            ax.bar_label(bars, padding=3)
+            ax.set_title(f'{title}\n評価者 {name} の集中度の度数分布')
+            ax.set_xlabel('集中度')
+            ax.set_ylabel('採点件数')
+            ax.set_xticks(scores)
+            ax.set_ylim(0, max(1, max(counts) * 1.15))
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+            fig.tight_layout()
+            save_figure(fig, f'concentration_frequency_rater_{index}')
     if show:
         plt.show()
         plt.close('all')
@@ -180,9 +213,13 @@ def main() -> None:
     if not db.is_file():
         parser.error(f'DB が見つかりません: {db}')
     try:
-        rows, videos = load_series(db, args.raters, args.track_id)
+        rows, videos, frequencies = load_ratings(db, args.raters, args.track_id)
         title = args.title or (args.dataset_root.name if args.dataset_root else db.stem)
-        paths = write_outputs(rows, videos, args.output_dir or db.parent / 'ratings_timeseries', title, args.track_id, args.show, args.smooth_window)
+        paths = write_outputs(
+            rows, videos, args.output_dir or db.parent / 'ratings_timeseries',
+            title, args.track_id, args.show, args.smooth_window, db_stem=db.stem,
+            frequencies=frequencies,
+        )
     except (ValueError, sqlite3.Error) as exc:
         parser.error(str(exc))
     for path in paths:

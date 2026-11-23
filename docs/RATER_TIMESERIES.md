@@ -44,11 +44,12 @@ python scripts/tools/plot_rater_timeseries.py --dataset_root datasets/lesson_001
 
 ## 保存ファイル
 
-既定の保存先は、入力 DB の隣にある ratings_timeseries フォルダです。
+既定の保存先は、入力 DB の隣にある ratings_timeseries フォルダです。出力ファイル名の先頭には、読み込んだ DB の拡張子を除いたファイル名が付きます。
 
-- concentration_video_<video_id>.png: 画像として利用する折れ線グラフ。
-- concentration_video_<video_id>.svg: 拡大・編集に適したベクター形式のグラフ。
-- ratings_timeseries.csv: video_id、window_id、区間開始・終了秒、評価者名、集中度、対象人数 n_labeled。欠測の score は空欄になります。
+- `<DB名>_concentration_video_<video_id>.png` は画像として利用する折れ線グラフです。
+- `<DB名>_concentration_video_<video_id>.svg` は拡大・編集に適したベクター形式のグラフです。
+- `<DB名>_ratings_timeseries.csv` には video_id、window_id、区間開始・終了秒、評価者名、集中度、対象人数 n_labeled が入ります。欠測の score は空欄になります。
+- `<DB名>_concentration_frequency_rater_<番号>.png` と `.svg` は評価者ごとの度数分布です。評価者名順に1から番号を振り、グラフのタイトルに評価者名を表示します。全動画の個々の採点を集中度1〜7別に集計します。スキップ区間・除外対象は集計から外し、`--raters` と `--track_id` の絞り込みを適用します。
 
 同じ保存先で再実行すると、同名の出力ファイルを更新します。入力 DB は読み取り専用で開き、評価データを変更しません。
 

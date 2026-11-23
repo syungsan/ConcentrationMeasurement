@@ -118,6 +118,24 @@ returned_dbs/lesson_001/evaluator02_dataset.sqlite
 
 マージ後のDBには評価者別の`labels`と合意ラベル`label_consensus`が保存されます。同じ評価者・同じsegmentに矛盾する値がある場合や、異なるdatasetのDBを混ぜた場合はエラーになります。
 
+## マージ済みDBから評価者を削除する
+
+評価者の名前と、評価者に紐づくテーブルごとの件数を確認します。
+
+```powershell
+.\WPy64-312101\python\python.exe scripts\tools\remove_rater.py list --db merged\lesson_001_merged.sqlite
+```
+
+一覧で確認した名前を `--rater` に指定します。複数人を削除する場合は名前をスペース区切りで並べ、空白を含む名前は引用符で囲みます。名前は大文字・小文字や空白も含めて完全一致で指定します。見つからない名前が一つでもある場合は、処理全体が中止されます。
+
+```powershell
+.\WPy64-312101\python\python.exe scripts\tools\remove_rater.py remove `
+  --db merged\lesson_001_merged.sqlite --rater "evaluator01" "evaluator02" `
+  --output merged\lesson_001_cleaned.sqlite
+```
+
+指定した評価者の採点、観察情報、操作履歴、スキップ、ブラインド割り当て、除外指定を削除したDBを別ファイルに保存し、評価者ごとの削除件数を表示します。残りの採点から合意ラベルを再計算し、同じフォルダーに `lesson_001_cleaned_consensus.csv` を出力します。出力先のDBまたはCSVがすでにある場合はエラーになります。共有状況と `merge_sources` の取り込み履歴は保持します。
+
 ## 主なDBテーブル
 
 | テーブル | 内容 |

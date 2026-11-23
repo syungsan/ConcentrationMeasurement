@@ -1113,7 +1113,10 @@ def train_situation_one(
         model.train()
         freeze_batchnorm_stats(model, cfg.freeze_batchnorm)
         skipped_train_batches = 0
+        train_nonfinite_inputs = 0
         train_nonfinite_logits = 0
+        train_nonfinite_loss = 0
+        train_nonfinite_grad = 0
         training_total, training_count = 0.0, 0
         for batch_index, (frames, poses, situations, _y) in enumerate(dl_tr, 1):
             if batch_index == 1 or batch_index % 25 == 0 or batch_index == len(dl_tr):
@@ -1122,6 +1125,12 @@ def train_situation_one(
                 frames = frames.to(cfg.device, non_blocking=True)
             if poses is not None:
                 poses = poses.to(cfg.device, non_blocking=True)
+            # Reject invalid inputs before the forward pass can change BatchNorm statistics.
+            if any(tensor is not None and not torch.isfinite(tensor).all()
+                   for tensor in (frames, poses, situations)):
+                train_nonfinite_inputs += 1
+                skipped_train_batches += 1
+                continue
             target = situations.argmax(dim=1).to(cfg.device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
             logits = model(frames, poses)
@@ -1132,20 +1141,34 @@ def train_situation_one(
             loss = F.cross_entropy(logits, target)
             if not torch.isfinite(loss):
                 skipped_train_batches += 1
-                train_nonfinite_logits += int(target.numel())
+                train_nonfinite_loss += 1
                 continue
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            if not torch.isfinite(grad_norm):
+                train_nonfinite_grad += 1
+                skipped_train_batches += 1
+                continue
             optimizer.step()
             training_total += float(loss.detach()) * target.numel()
             training_count += target.numel()
+        train_stats = {
+            "train_samples": training_count,
+            "train_skipped_batches": skipped_train_batches,
+            "train_nonfinite_input_batches": train_nonfinite_inputs,
+            "train_nonfinite_logits": train_nonfinite_logits,
+            "train_nonfinite_loss_batches": train_nonfinite_loss,
+            "train_nonfinite_grad_batches": train_nonfinite_grad,
+        }
+        if skipped_train_batches:
+            print(f"[situation:{cfg.mode}] epoch {epoch} numerical diagnostics: {train_stats}", flush=True)
         if cfg.no_validation:
             if not training_count:
                 raise RuntimeError("No finite situation training updates; final model was not saved")
             best_state = snapshot_state(model)
             best_metrics = {"validation_enabled": False, "train_loss": training_total / training_count}
             history.append({"epoch": epoch, "mode": cfg.mode, "train_loss": best_metrics["train_loss"],
-                            "train_samples": training_count, "no_validation": True,
+                            **train_stats, "no_validation": True,
                             "lr": optimizer.param_groups[0]["lr"], "checkpoint_selection": "final_epoch"})
             print(f"[situation:{cfg.mode}] epoch {epoch}/{epochs} train_loss={best_metrics['train_loss']:.4f}; validation disabled; retaining final epoch", flush=True)
             continue
@@ -1159,8 +1182,7 @@ def train_situation_one(
             "val_accuracy": metrics["accuracy"],
             "val_nonfinite_logits": metrics.get("nonfinite_logits", 0),
             "val_skipped_batches": metrics.get("skipped_batches", 0),
-            "train_nonfinite_logits": train_nonfinite_logits,
-            "train_skipped_batches": skipped_train_batches,
+            **train_stats,
         })
         print(
             f"[situation:{cfg.mode}] ep{epoch:03d} "
@@ -1168,6 +1190,11 @@ def train_situation_one(
             f"val_nonfinite_logits={metrics.get('nonfinite_logits', 0)} "
             f"train_nonfinite_logits={train_nonfinite_logits} train_skipped={skipped_train_batches}"
         )
+        if not training_count or not math.isfinite(metrics["loss"]):
+            if best_state is not None:
+                print(f"[WARN] Situation epoch {epoch} had no valid training updates or validation loss; "
+                      "stopping with the best earlier checkpoint.", flush=True)
+            break
         if scheduler is not None and math.isfinite(metrics["loss"]):
             scheduler.step(metrics["loss"])
         if math.isfinite(metrics["loss"]) and metrics["loss"] < best_loss:
@@ -1182,8 +1209,8 @@ def train_situation_one(
             break
     if best_state is None:
         raise RuntimeError(
-            "Situation classifier did not produce a finite validation loss. "
-            "Try lowering --lr, reducing transformer size/layers, or checking input features for NaN/inf."
+            "Situation classifier has no checkpoint with valid training updates and finite validation loss. "
+            "Check the situation numerical diagnostics and validation counters."
         )
     ds_tr.close()
     ds_va.close()

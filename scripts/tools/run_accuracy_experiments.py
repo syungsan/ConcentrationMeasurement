@@ -17,6 +17,7 @@ from uuid import uuid4
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+COMBINED_VARIANT = "no_situation_mild"
 
 
 def run_with_progress(command, log, *, title):
@@ -82,6 +83,7 @@ def experiments():
         "standard": ordered + ["--augmentation", "standard"],
         "no_situation": ordered + ["--no-situation-feature"],
         "grayscale": ordered + ["--grayscale"],
+        COMBINED_VARIANT: ordered + ["--no-situation-feature", "--augmentation", "mild"],
     }
 
 
@@ -120,7 +122,7 @@ def read_prior_results(directory):
     return rows
 
 
-def append_plan(directory, chosen, output):
+def append_plan(directory, chosen, output, *, batch_size=None):
     """Use saved baseline commands to retain the original splits and training settings."""
     source = json.loads((directory / "experiment_plan.json").read_text(encoding="utf-8"))
     references = [row for row in source if row["variant"] == "baseline"]
@@ -142,6 +144,8 @@ def append_plan(directory, chosen, output):
             command[1] = str(ROOT / "scripts/07_train.py")
             command[command.index("--save_name") + 1] = str(checkpoint)
             command.extend(experiments()[variant])
+            if batch_size is not None:
+                command.extend(["--batch_size", str(batch_size)])
             plan.append({"variant": variant, "seed": reference["seed"], "fold": fold,
                          "checkpoint": str(checkpoint), "command": command,
                          "reference_checkpoint": reference["checkpoint"]})
@@ -166,11 +170,16 @@ def dataset_folds(dataset_count, fold_count=0):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data_roots", default="")
+    ap.add_argument("--db_paths", default="",
+                    help="Comma-separated database paths in the same order as --data_roots.")
+    ap.add_argument("--label_source", choices=["individual", "consensus"], default="individual",
+                    help="Use individual rater labels or the mean scores stored in merged databases.")
     ap.add_argument("--append", action="store_true",
                     help="Add only chosen variants in a new subdirectory, inheriting original experiment settings.")
     ap.add_argument("--raters", default="tadano")
     ap.add_argument("--seeds", default="42")
-    ap.add_argument("--variants", default=",".join(experiments()))
+    ap.add_argument("--variants", default=",".join(name for name in experiments() if name != COMBINED_VARIANT),
+                    help="Comma-separated experiment names. Use no_situation_mild to combine both settings.")
     ap.add_argument("--cross_validation", choices=["none", "dataset"], default="none",
                     help="dataset: rotate each of N dataset roots as the validation set.")
     ap.add_argument("--cv_folds", type=int, default=0,
@@ -183,6 +192,8 @@ def main():
     ap.add_argument("--final_train", action="store_true", help="After CV, train selected variant on all data at median best epochs.")
     ap.add_argument("--situation_epochs", type=int, default=20)
     ap.add_argument("--epochs", type=int, default=50)
+    ap.add_argument("--batch_size", type=int, default=None,
+                    help="Training and validation batch size. Omit to use the training default or inherit it with --append.")
     ap.add_argument("--num_workers", type=int, default=4)
     ap.add_argument("--situation_profile", choices=["legacy", "shared"], default="legacy")
     ap.add_argument("--output_dir", default="outputs/accuracy_experiments")
@@ -190,14 +201,20 @@ def main():
     ap.add_argument("--holdout_groups", default=None, help="Default dataset:0 for dataset split; otherwise random seeded holdout.")
     ap.add_argument("--execute", action="store_true", help="Without this flag, only save/print the plan.")
     args = ap.parse_args()
+    if args.batch_size is not None and args.batch_size < 1:
+        ap.error("--batch_size must be positive")
     if not args.append and not args.data_roots:
         ap.error("--data_roots is required unless --append is used")
+    roots = [value for value in args.data_roots.split(",") if value.strip()]
+    if not args.append and args.db_paths.strip():
+        db_paths = [value for value in args.db_paths.split(",") if value.strip()]
+        if len(db_paths) != len(roots):
+            ap.error("--db_paths must have the same number of entries as --data_roots")
     if args.append and args.final_train:
         ap.error("--append cannot automatically refit a final model; compare combined results first")
     if args.final_train and (not args.execute or args.cross_validation != "dataset"):
         ap.error("--final_train requires --execute and --cross_validation dataset")
     if args.cross_validation == "dataset":
-        roots = [value for value in args.data_roots.split(",") if value.strip()]
         if len(roots) < 2:
             ap.error("dataset cross-validation requires at least two datasets")
         if args.holdout_groups:
@@ -233,7 +250,7 @@ def main():
                 checkpoint = output / f"{variant}_seed{seed}{suffix}.pt"
                 command = [sys.executable, str(ROOT / "scripts/07_train.py"),
                            "--data_roots", args.data_roots, "--raters", args.raters,
-                           "--label_source", "individual", "--include_pilot_post",
+                           "--label_source", args.label_source, "--include_pilot_post",
                            "--mode", "fusion", "--temporal", "transformer",
                            "--T", "10", "--sample_strategy", "uniform",
                            "--image_roi", "upper_body", "--fusion_image_scale", "0.5",
@@ -244,6 +261,10 @@ def main():
                            "--situation_profile", args.situation_profile,
                            "--holdout_groups", ",".join(f"dataset:{index}" for index in folds[fold]) if fold is not None else args.holdout_groups,
                            "--save_name", str(checkpoint), *variants[variant]]
+                if args.batch_size is not None:
+                    command.extend(["--batch_size", str(args.batch_size)])
+                if args.db_paths.strip():
+                    command.extend(["--db_paths", args.db_paths])
                 if args.situation_patience is not None:
                     command.extend(["--situation_patience", str(args.situation_patience)])
                 if args.concentration_patience is not None:
@@ -251,7 +272,7 @@ def main():
                 plan.append({"variant": variant, "seed": seed, "fold": fold, "checkpoint": str(checkpoint), "command": command})
     prior = []
     if args.append:
-        plan, prior = append_plan(original_output, chosen, output)
+        plan, prior = append_plan(original_output, chosen, output, batch_size=args.batch_size)
         command = plan[0]["command"]
         args.selection_metric = command[command.index("--selection_metric") + 1]
         args.situation_profile = command[command.index("--situation_profile") + 1]

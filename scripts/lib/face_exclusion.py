@@ -36,6 +36,8 @@ class FaceDbMatcher:
         db_path: Path,
         *,
         threshold: float,
+        inclusion: bool = False,
+        exclusion: bool = True,
         device: str = "auto",
         det_size: tuple[int, int] = (640, 640),
     ) -> None:
@@ -61,6 +63,17 @@ class FaceDbMatcher:
         self.embs = np.asarray(data["embs"], dtype=np.float32)
         if self.embs.ndim != 2 or len(self.names) != len(self.embs):
             raise RuntimeError(f"顔DBの形式が不正です: {db_path}")
+        roles = data["roles"].tolist() if "roles" in data else ["exclude"] * len(self.names)
+        if len(roles) != len(self.names) or any(role not in ("include", "exclude") for role in roles):
+            raise ValueError(f"Invalid face roles: {db_path}")
+        if inclusion and "include" not in roles:
+            raise ValueError("児童が未登録です。faces/include に採取し、build_face_db.py を実行してください。")
+        self.labels = [
+            ("include/" + name if inclusion else None) if role == "include"
+            else (name if exclusion else None)
+            for name, role in zip(self.names, roles)
+        ]
+        data.close()
         norms = np.linalg.norm(self.embs, axis=1, keepdims=True)
         self.embs = self.embs / np.maximum(norms, 1e-12)
         self.threshold = float(threshold)
@@ -94,7 +107,7 @@ class FaceDbMatcher:
         scores = self.embs @ emb
         index = int(np.argmax(scores))
         score = float(scores[index])
-        return (self.names[index] if score >= self.threshold else None), score
+        return (self.labels[index] if score >= self.threshold else None), score
 
 
 class OnlineFaceExclusionTracker:
@@ -120,6 +133,9 @@ class OnlineFaceExclusionTracker:
             int(track_id), deque(maxlen=self.max_frames)
         )
         matched_name, _score = self.matcher.match(image)
+        if (self.names.get(int(track_id), "").startswith("include/")
+                and matched_name is not None and matched_name != self.names[int(track_id)]):
+            history.clear()
         history.append(matched_name)
         excluded, name, _count, _ratio = decide_face_exclusion(
             list(history), self.min_matches, self.min_match_ratio,
@@ -129,6 +145,16 @@ class OnlineFaceExclusionTracker:
         elif not excluded:
             self.names.pop(int(track_id), None)
         return excluded, self.names.get(int(track_id))
+
+    def student_name(self, track_id: int) -> str | None:
+        label = self.names.get(int(track_id), "")
+        return label.split("/", 1)[1] if label.startswith("include/") else None
+
+    def update_person(self, track_id, image):
+        confirmed, name = self.update(track_id, image)
+        if self.student_name(track_id) is not None:
+            return False, None
+        return confirmed, name
 
     def forget(self, track_id: int) -> None:
         self.history.pop(int(track_id), None)

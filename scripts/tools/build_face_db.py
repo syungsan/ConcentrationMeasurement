@@ -143,12 +143,19 @@ def build_face_db(
     print(f"[INFO] 顔処理デバイス: {device}")
     app.prepare(ctx_id=ctx_id, det_size=(640, 640))
 
+    person_roles = []
     person_names = []
     person_embs = []
 
     img_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
-    for person_dir in sorted(faces_dir.iterdir()):
+    entries = []
+    for directory in sorted(faces_dir.iterdir()):
+        if directory.name in ("include", "exclude") and directory.is_dir():
+            entries.extend((directory.name, person) for person in sorted(directory.iterdir()))
+        else:
+            entries.append(("include" if faces_dir.name == "include" else "exclude", directory))
+    for role, person_dir in entries:
         if not person_dir.is_dir():
             continue
 
@@ -191,6 +198,7 @@ def build_face_db(
         if norm > 1e-6:
             mean_emb = mean_emb / norm
 
+        person_roles.append(role)
         person_names.append(name)
         person_embs.append(mean_emb.astype("float32"))
         print(f"  -> {len(embs)}枚から平均埋め込みを作成")
@@ -203,7 +211,7 @@ def build_face_db(
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(out_path, names=names_arr, embs=embs_arr)
+    np.savez(out_path, names=names_arr, embs=embs_arr, roles=person_roles)
     print(
         f"\n[DONE] {len(names_arr)} 人分の顔DBを保存しました: "
         f"{out_path.resolve()}"

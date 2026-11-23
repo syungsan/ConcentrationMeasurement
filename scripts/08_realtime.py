@@ -16,6 +16,7 @@ from ultralytics import YOLO
 
 from lib.db import connect, init_db, upsert_video, ensure_track
 from lib.image_roi import image_model_crop
+from lib.student_label import draw_student_name
 from lib.face_exclusion import FaceDbMatcher, OnlineFaceExclusionTracker
 from lib.runroot import get_data_root, rpath
 from lib.pose_norm import normalize_pose_kpts
@@ -465,6 +466,7 @@ class TrackDrawState:
 # -------------------------
 def parse_args():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--face-inclusion", "--face_inclusion", action="store_true", help="登録児童の名前を表示・記録する")
     ap.add_argument("--ckpt", type=str, required=True, help="07_train.py で保存した .pt")
     ap.add_argument("--mode", type=str, default="fusion", choices=["image", "skeleton", "fusion"])
     ap.add_argument(
@@ -601,13 +603,15 @@ def main():
 
     face_tracker = None
     face_cfg = cfg.get("face_exclusion", {})
-    if not args.no_face_exclusion and bool(face_cfg.get("enabled", False)):
+    use_exclusion = not args.no_face_exclusion and bool(face_cfg.get("enabled", False))
+    if use_exclusion or args.face_inclusion:
         face_db_path = (repo_root / str(face_cfg.get("db_path", "models/face_db.npz"))).resolve()
         if not face_db_path.exists():
             raise FileNotFoundError(f"face DB not found: {face_db_path}")
         face_tracker = OnlineFaceExclusionTracker(
             FaceDbMatcher(
                 face_db_path,
+                inclusion=args.face_inclusion, exclusion=use_exclusion,
                 threshold=float(face_cfg.get("similarity_threshold", 0.50)),
                 device=str(face_cfg.get("device", args.device)),
             ),
@@ -615,7 +619,7 @@ def main():
             min_match_ratio=float(face_cfg.get("min_match_ratio", 0.50)),
             max_frames=int(face_cfg.get("max_frames", 8)),
         )
-        print(f"face exclusion: enabled, DB={face_db_path}")
+        print(f"face exclusion={use_exclusion}, inclusion={args.face_inclusion}, DB={face_db_path}")
     elif args.no_face_exclusion:
         print("face exclusion: disabled by --no-face-exclusion")
 
@@ -649,6 +653,8 @@ def main():
     prediction_columns = {
         str(row[1]) for row in conn.execute("PRAGMA table_info(predictions)")
     }
+    if "student_name" not in prediction_columns:
+        conn.execute("ALTER TABLE predictions ADD COLUMN student_name TEXT")
     if "situation_confidence" not in prediction_columns:
         conn.execute("ALTER TABLE predictions ADD COLUMN situation_confidence REAL")
     if "situation_probs" not in prediction_columns:
@@ -752,7 +758,7 @@ def main():
                         excluded = False
                         excluded_name = None
                         if face_tracker is not None:
-                            excluded, excluded_name = face_tracker.update(tid, crop0)
+                            excluded, excluded_name = face_tracker.update_person(tid, crop0)
                         bbox_new = np.array([x1, y1, x2, y2], dtype=np.float32)
                         if excluded:
                             buffers.buf.pop(int(tid), None)
@@ -887,9 +893,9 @@ def main():
                                 INSERT INTO predictions(
                                     video_id, frame_idx, t, track_id, mode, yhat, score_int, situation,
                                     situation_confidence, situation_probs,
-                                    x1,y1,x2,y2, det_conf, crop_path, pose_path
+                                    x1,y1,x2,y2, det_conf, crop_path, pose_path, student_name
                                 )
-                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                                 """,
                                 (
                                     video_id, int(frame_idx), float(t), int(tid), str(args.mode),
@@ -898,7 +904,7 @@ def main():
                                     json.dumps(current_situation_probs.tolist()),
                                     float(x1), float(y1), float(x2), float(y2),
                                     float(det_conf),
-                                    crop_rel, pose_rel
+                                    crop_rel, pose_rel, face_tracker.student_name(tid) if face_tracker else None
                                 )
                             )
 
@@ -956,6 +962,8 @@ def main():
                 x1i, y1i, x2i, y2i = bb
 
                 show_id = int(tid_to_sid.get(int(tid), int(tid))) if mapper is not None else int(tid)
+                if args.face_inclusion and face_tracker.student_name(tid):
+                    draw_student_name(frame, x1i, y1i, face_tracker.student_name(tid), args.label_scale)
                 if st.excluded:
                     cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 128, 255), int(args.box_thick))
                     suffix = f" ({st.excluded_name})" if st.excluded_name else ""

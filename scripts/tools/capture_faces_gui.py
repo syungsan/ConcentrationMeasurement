@@ -331,6 +331,7 @@ class FaceCaptureGUI:
         self.root.protocol("WM_DELETE_WINDOW", self.on_quit)
 
         # 各種変数
+        self.var_role = tk.StringVar(value="exclude")
         self.var_name = tk.StringVar()
         self.var_out_root = tk.StringVar(value=str(DEFAULT_FACES_DIR))
         self.var_duration = tk.DoubleVar(value=30.0)
@@ -458,7 +459,11 @@ class FaceCaptureGUI:
 
         # ボタン
         btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=8, column=0, columnspan=2, pady=15)
+        role_frame = ttk.Frame(frame)
+        role_frame.grid(row=8, column=1, sticky="w", **pad)
+        for role, label in (("exclude", "除外（先生・部外者）"), ("include", "含める（児童）")):
+            ttk.Radiobutton(role_frame, text=label, value=role, variable=self.var_role).pack(side="left")
+        btn_frame.grid(row=9, column=0, columnspan=2, pady=15)
 
         self.btn_start = ttk.Button(
             btn_frame, text="開始", command=self.on_start
@@ -497,7 +502,7 @@ class FaceCaptureGUI:
             return
 
         name = self.var_name.get().strip()
-        if not name:
+        if not name or Path(name).name != name or name in (".", ".."):
             messagebox.showwarning("警告", "人物名を入力してください。")
             return
 
@@ -550,7 +555,7 @@ class FaceCaptureGUI:
         self.result_queue = self.process_context.Queue()
         options = dict(
             cam_index=cam_index,
-            out_root=out_root,
+            out_root=Path(out_root) / self.var_role.get(),
             person_name=name,
             duration=duration,
             device=device,

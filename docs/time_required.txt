@@ -106,7 +106,7 @@ Orpheus (Ryzen7 5700X & RTX3060) Windows
 
 06_train.py
 fusion (transformer)
-
+所要時間: 06:31:46.08 (23506.08秒)
 
 09_video_offline.py
 fusion (10min-transformer)
