@@ -24,7 +24,7 @@ from ultralytics import YOLO
 
 from lib.platform_tools import find_video_tool
 from lib.image_roi import image_model_crop
-from lib.student_label import draw_student_name
+from lib.student_label import draw_person_name
 from lib.face_exclusion import FaceDbMatcher, OnlineFaceExclusionTracker
 from lib.runroot import get_data_root, rpath
 from lib.infer import (
@@ -1116,13 +1116,14 @@ def main():
 
             show_id = tid_to_sid.get(tid, tid) if (args.stable_id and mapper is not None) else tid
             if args.face_inclusion and face_tracker.student_name(tid):
-                draw_student_name(frame, x1i, y1i, face_tracker.student_name(tid), args.label_scale)
+                draw_person_name(frame, x1i, y1i, face_tracker.student_name(tid), args.label_scale)
             if st.excluded:
                 cv2.rectangle(frame, (x1i, y1i), (x2i, y2i), (0, 128, 255), int(args.box_thick))
-                suffix = f" ({st.excluded_name})" if st.excluded_name else ""
+                if st.excluded_name:
+                    draw_person_name(frame, x1i, y1i, st.excluded_name, args.label_scale)
                 draw_label(
                     frame, x1i, y1i,
-                    f"ID:{int(show_id)}  EXCLUDED{suffix}",
+                    f"ID:{int(show_id)}  EXCLUDED",
                     font_scale=float(args.label_scale),
                     thickness=int(args.label_thick),
                     text_color=(255, 255, 255), bg_color=(0, 96, 192),

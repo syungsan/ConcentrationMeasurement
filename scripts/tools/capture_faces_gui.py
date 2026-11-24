@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.devices import face_device, face_providers, face_context_id
 from lib.face_registration import rotate_frame, registration_crop, detect_capture_faces
+from lib.student_label import draw_person_name
 
 import cv2
 
@@ -184,7 +185,8 @@ def capture_faces(
                 "動画のFPSを取得できません。別の動画形式でお試しください。"
             )
 
-        win_name = f"Capture faces: {person_name}"
+        # Some OpenCV backends garble Unicode in native window titles.
+        win_name = "Capture faces"
         cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
 
         # 画面中央に配置（最初のフレームを読んでから位置決め）
@@ -269,7 +271,9 @@ def capture_faces(
                 cv2.LINE_AA,
             )
 
-            cv2.imshow(win_name, cv2.resize(frame, (display_w, display_h), interpolation=cv2.INTER_AREA))
+            preview = cv2.resize(frame, (display_w, display_h), interpolation=cv2.INTER_AREA)
+            draw_person_name(preview, 10, 36, person_name, 1.0)
+            cv2.imshow(win_name, preview)
             key = cv2.waitKey(1) & 0xFF
             if key == 27 or key == ord("q"):
                 print("[INFO] キー入力により中断されました。")

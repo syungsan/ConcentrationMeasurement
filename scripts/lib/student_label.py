@@ -25,7 +25,7 @@ def _label(name, size):
     return np.asarray(tile)
 
 
-def draw_student_name(frame, x, y, name, scale):
+def draw_person_name(frame, x, y, name, scale):
     tile = _label(name, max(14, round(24 * scale)))
     h, w = tile.shape[:2]
     height, width = frame.shape[:2]
