@@ -230,20 +230,37 @@ class IndexedDataset(Dataset):
         self.dataset = dataset
 
     def __len__(self) -> int:
-        return len(self.dataset)
+        return len(self.dataset) if self.dataset is not None else len(self._items)
 
     def __getitem__(self, index: int):
+        if self.dataset is None:
+            train_mod = load_train_module(repo_root())
+            self.dataset = train_mod.MultiSQLiteSegmentDataset(self._cfg, self._items, self._is_train)
         return index, self.dataset[index]
+
+    def __getstate__(self):
+        # Windows spawn cannot pickle the class dynamically loaded from 07_train.py,
+        # nor SQLite connections already opened by the parent. Rebuild per worker.
+        if self.dataset is None:
+            return dict(self.__dict__)
+        return {"dataset": None, "_cfg": self.dataset.cfg,
+                "_items": self.dataset.items, "_is_train": self.dataset.is_train}
+
+
+def indexed_collate(batch):
+    """Module-level callable so DataLoader workers can import it under spawn."""
+    indices = [int(item[0]) for item in batch]
+    samples = [item[1] for item in batch]
+    frames, poses, situations, y = zip(*samples)
+    return (indices,
+            torch.stack(frames) if frames[0] is not None else None,
+            torch.stack(poses) if poses[0] is not None else None,
+            torch.stack(situations), torch.stack(y))
 
 
 def make_indexed_collate(train_mod: Any):
-    def collate(batch):
-        indices = [int(item[0]) for item in batch]
-        samples = [item[1] for item in batch]
-        frames, poses, situations, y = train_mod.collate_fn(samples)
-        return indices, frames, poses, situations, y
-
-    return collate
+    # Preserve the public helper for callers; do not capture train_mod in a closure.
+    return indexed_collate
 
 
 @torch.no_grad()

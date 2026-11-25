@@ -167,6 +167,14 @@ def dataset_folds(dataset_count, fold_count=0):
     return [[index for index in range(dataset_count) if index % count == fold] for fold in range(count)]
 
 
+def grouped_dataset_folds(groups, fold_count=0):
+    """Keep all roots from the same lesson in one fold, preserving input order."""
+    labels = list(dict.fromkeys(groups))
+    label_folds = dataset_folds(len(labels), fold_count)
+    return [[i for i, label in enumerate(groups) if label in {labels[j] for j in fold}]
+            for fold in label_folds]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data_roots", default="")
@@ -180,8 +188,14 @@ def main():
     ap.add_argument("--seeds", default="42")
     ap.add_argument("--variants", default=",".join(name for name in experiments() if name != COMBINED_VARIANT),
                     help="Comma-separated experiment names. Use no_situation_mild to combine both settings.")
-    ap.add_argument("--cross_validation", choices=["none", "dataset"], default="none",
-                    help="dataset: rotate each of N dataset roots as the validation set.")
+    ap.add_argument("--cross_validation", choices=["none", "dataset", "nested"], default="none",
+                    help="dataset: development CV; nested: separate inner selection and outer testing.")
+    ap.add_argument("--dataset_groups", default="",
+                    help="Comma-separated lesson IDs aligned with data_roots; identical IDs stay together.")
+    ap.add_argument("--inner_folds", type=int, default=0,
+                    help="Nested inner folds; 0 leaves out one remaining lesson group at a time.")
+    ap.add_argument("--resume", action="store_true",
+                    help="Resume an unchanged nested plan, reusing completed selection/refit stages.")
     ap.add_argument("--cv_folds", type=int, default=0,
                     help="Group whole datasets into this many folds; 0 validates each dataset individually.")
     ap.add_argument("--situation_patience", type=int, default=None,
@@ -210,6 +224,22 @@ def main():
         db_paths = [value for value in args.db_paths.split(",") if value.strip()]
         if len(db_paths) != len(roots):
             ap.error("--db_paths must have the same number of entries as --data_roots")
+    groups = [value.strip() for value in args.dataset_groups.split(",")]
+    if args.dataset_groups and (len(groups) != len(roots) or not all(groups)):
+        ap.error("--dataset_groups must contain one non-empty lesson ID per data_root")
+    if args.cross_validation == "nested":
+        from nested_accuracy_cv import run_nested
+        try:
+            run_nested(args)
+        except ValueError as error:
+            ap.error(str(error))
+        return
+    if args.inner_folds:
+        ap.error("--inner_folds requires --cross_validation nested")
+    if args.resume:
+        ap.error("--resume requires --cross_validation nested")
+    if args.dataset_groups and (args.cross_validation != "dataset" or args.append):
+        ap.error("--dataset_groups requires dataset/nested CV without --append")
     if args.append and args.final_train:
         ap.error("--append cannot automatically refit a final model; compare combined results first")
     if args.final_train and (not args.execute or args.cross_validation != "dataset"):
@@ -221,7 +251,7 @@ def main():
             ap.error("cross-validation chooses holdouts automatically; omit --holdout_groups")
         args.split_unit = "dataset"
         try:
-            folds = dataset_folds(len(roots), args.cv_folds)
+            folds = grouped_dataset_folds(groups, args.cv_folds) if args.dataset_groups else dataset_folds(len(roots), args.cv_folds)
         except ValueError as error:
             ap.error(str(error))
     elif args.cv_folds:

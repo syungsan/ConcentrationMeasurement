@@ -27,15 +27,19 @@ $trainingRoots = "datasets/20260227_unnan_nishi_5-1_1,datasets/20260713_unnan_ni
 ##
 $databasePaths = "merged/20260227_unnan_nishi_5-1_1_merged.sqlite,merged/20260713_unnan_nishi_2-1_1_a_merged.sqlite,merged/20260713_unnan_nishi_2-1_1_b_merged.sqlite,merged/20260227_unnan_nishi_5-1_2_merged.sqlite,merged/20260714_unnan_nishi_3-1_1_a_merged.sqlite,merged/20260714_unnan_nishi_3-1_1_b_merged.sqlite,merged/20260311_unnan_nishi_5-1_1_merged.sqlite,merged/20260714_unnan_nishi_6-1_1_a_merged.sqlite,merged/20260714_unnan_nishi_6-1_1_b_merged.sqlite"
 
-# クロスバリデーションによる評価
+##
+$lessonGroups = "datasets/20260227_unnan_nishi_5-1_1,datasets/20260713_unnan_nishi_2-1_1,datasets/20260713_unnan_nishi_2-1_1,datasets/20260227_unnan_nishi_5-1_2,datasets/20260714_unnan_nishi_3-1_1,datasets/20260714_unnan_nishi_3-1_1,datasets/20260311_unnan_nishi_5-1_1,datasets/20260714_unnan_nishi_6-1_1,datasets/20260714_unnan_nishi_6-1_1"
+
+# ネストしたクロスバリデーションによる評価
 python scripts/tools/run_accuracy_experiments.py `
   --data_roots $trainingRoots --db_paths $databasePaths `
-  --label_source consensus --cross_validation dataset `
-#  --variants no_situation_mild --seeds 42 `
-  --variants mild --seeds 42 --batch_size 16 `
-  --epochs 50 --situation_epochs 20 `
+  --label_source consensus --cross_validation nested `
+  --dataset_groups $lessonGroups `
+  --variants standard --seeds 42 --batch_size 16 `
+  --inner_folds 0 --epochs 50 --situation_epochs 20 `
   --concentration_patience 5 --situation_patience 3 `
-  --output_dir outputs/merged_consensus_cv --execute --final_train
+  --output_dir outputs/merged_consensus_nested_cv `
+  --execute --final_train
 
 # 評価者が複数人でデータベースをマージした場合のトレーニング
 python scripts/07_train.py `
@@ -43,7 +47,7 @@ python scripts/07_train.py `
   --label_source consensus --min_raters 1 --include_pilot_post `
   --mode fusion --temporal transformer --T 10 --sample_strategy uniform `
   --image_roi upper_body --fusion_image_scale 0.5 --batch_size 16 `
-  --lr 1e-4 --epochs 50 --situation_epochs 20 --split_unit window --augmentation mild `
+  --lr 1e-4 --epochs 50 --situation_epochs 20 --split_unit window --augmentation standard `
   --save_name outputs/merged_consensus_fusion.pt
 
 # テストデータによるモデルの評価
