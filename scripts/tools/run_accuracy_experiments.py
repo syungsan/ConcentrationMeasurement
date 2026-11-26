@@ -175,7 +175,16 @@ def grouped_dataset_folds(groups, fold_count=0):
             for fold in label_folds]
 
 
+def print_total_elapsed(started, cross_validation):
+    elapsed = time.monotonic() - started
+    hours, remainder = divmod(int(elapsed), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    print(f"[{cross_validation} CV] All runs complete; total elapsed="
+          f"{hours:02d}:{minutes:02d}:{seconds:02d} ({elapsed:.1f}s)", flush=True)
+
+
 def main():
+    started = time.monotonic()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data_roots", default="")
     ap.add_argument("--db_paths", default="",
@@ -233,6 +242,8 @@ def main():
             run_nested(args)
         except ValueError as error:
             ap.error(str(error))
+        if args.execute:
+            print_total_elapsed(started, args.cross_validation)
         return
     if args.inner_folds:
         ap.error("--inner_folds requires --cross_validation nested")
@@ -389,6 +400,8 @@ def main():
                 run_with_progress(command, log, title="FINAL all data")
     if not args.execute:
         print(f"Plan saved: {output / 'experiment_plan.json'}; add --execute to train.")
+    elif args.cross_validation == "dataset":
+        print_total_elapsed(started, args.cross_validation)
 
 
 if __name__ == "__main__":
